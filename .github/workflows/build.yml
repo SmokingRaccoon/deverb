@@ -106,7 +106,10 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           AU=$(find build -name "*.component" -maxdepth 4 | head -1)
-          echo "A testar $AU"
+          echo "A instalar $AU para o auval encontrar"
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          rm -rf ~/Library/Audio/Plug-Ins/Components/deVerb.component
+          cp -R "$AU" ~/Library/Audio/Plug-Ins/Components/
           auval -v aufx dVr1 Pdlb
 
       - name: Upload artefactos
