@@ -59,7 +59,7 @@ jobs:
           -DDEVERB_FORMATS="${{ matrix.formats }}"
           -DCMAKE_C_COMPILER_LAUNCHER=ccache
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-          ${{ runner.os == 'macOS' && '-DCMAKE_OSX_ARCHITECTURES=x86_64;arm64' || '' }}
+          ${{ runner.os == 'macOS' && '-DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"' || '' }}
 
       - name: Build plugin
         run: cmake --build build
@@ -76,7 +76,7 @@ jobs:
           cmake -S tests -B tests/build -G Ninja -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_C_COMPILER_LAUNCHER=ccache
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-          ${{ runner.os == 'macOS' && '-DCMAKE_OSX_ARCHITECTURES=x86_64;arm64' || '' }}
+          ${{ runner.os == 'macOS' && '-DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"' || '' }}
           && cmake --build tests/build --target test_dsp test_chain test_ui
 
       - name: Run DSP + chain tests
