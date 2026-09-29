@@ -106,7 +106,7 @@ jobs:
       # corre o pluginval sob gdb para apanhar o backtrace exato do crash.
       # Remover quando resolvido.
       - name: pluginval sob gdb (debug crash Editor)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && failure()
         run: |
           sudo apt-get install -y gdb
           VST3=$(find build -name "*.vst3" -maxdepth 4 | head -1)
@@ -125,7 +125,9 @@ jobs:
           killall -9 AudioComponentRegistrar || true
           sleep 5
           auval -a | grep -i deverb || echo "deVerb NÃO listado no auval -a"
-          auval -v aufx dVr1 Pdlb
+          # NOTA: tipo 'aumf' e não 'aufx' — o plugin aceita MIDI, logo o JUCE
+          # declara-o como Music Effect (kAudioUnitType_MusicEffect).
+          auval -v aumf dVr1 Pdlb
 
       - name: Upload artefactos
         uses: actions/upload-artifact@v4
