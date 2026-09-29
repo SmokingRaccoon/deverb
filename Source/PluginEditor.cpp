@@ -176,24 +176,14 @@ DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
     };
     addAndMakeVisible(globalPresetBox);
 
-    // --- Botão RANDOM: preset totalmente aleatório, sempre divertido ---
-    // Randomiza TUDO menos o gain staging (master/input fixos para nunca
-    // dar silêncio por acidente). Usa o RNG do sistema (não determinístico).
-    randomButton.setTooltip("Gera um preset totalmente aleatório");
+    // --- Botão RANDOM: preset civilizado (sempre audível) ---
+    // Gamas musicais em core/FactoryPresets.h (nunca silêncio acidental).
+    // Usa o RNG do sistema (não determinístico); testes usam seeds fixas.
+    randomButton.setTooltip("Gera um preset aleatório (sempre audível)");
     randomButton.onClick = [this]
     {
-        auto* masterPar = proc.apvts.getParameter("master");
-        auto* inputPar = proc.apvts.getParameter("input_gain");
         juce::Random rng;
-        for (auto* par : proc.getParameters())
-        {
-            if (par == masterPar)
-                par->setValueNotifyingHost(0.8f);
-            else if (par == inputPar)
-                par->setValueNotifyingHost(0.5f); // range 0..2 → 1.0
-            else
-                par->setValueNotifyingHost(rng.nextFloat());
-        }
+        applyRealList(proc.apvts, civilizedRandom(rng));
     };
     addAndMakeVisible(randomButton);
 

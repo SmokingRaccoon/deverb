@@ -42,7 +42,9 @@ Testado em: Ubuntu 26.04, ecrã 1366×768 (a janela tem 1280×624 fixos).
 Init · Trance Gate 16 · Offbeat Chop · Big Hall Space · Reverse Tail ·
 Reverse Throw · Beat Repeat · Stutter Brk · Dub Echo · Shimmer Pad · Build Up.
 Escolher um preset escreve nos parâmetros (podes afinar por cima).
-Botão **RANDOM** na topbar: preset totalmente aleatório (poupa master/input).
+Botão **RANDOM** na topbar: preset aleatório mas sempre audível (gamas
+curadas em `core/FactoryPresets.h`: mixes > 0, pattern com densidade,
+freeze/interrupt/manual OFF, morph contido; master/input fixos).
 
 ## Notas de release v0.1.0
 
@@ -53,8 +55,11 @@ Botão **RANDOM** na topbar: preset totalmente aleatório (poupa master/input).
   DUCK, fonte Dry/PostFWD, inherit/morph por módulo + trims.
 - Routing: 4 ordens de cadeia (FWD e REV partilham) + modo XFADE
   (beats pares FWD, ímpares REV).
+- Segurança: limiter no master (ceiling -1 dBFS, attack instantâneo);
+  feedbacks capados; wow com headroom de buffer; Off = bypass transparente.
 - Validado: `pluginval --strictness-level 10` → SUCCESS; 58 testes DSP
-  offline + 7 ponta-a-ponta + 27 de sessão UI; scan Carla VST3+LV2 OK.
+  offline + 10 ponta-a-ponta (incl. limiter e 20 RANDOMs audíveis) + 32 de
+  sessão UI; scan Carla VST3+LV2 OK.
 - Limites conhecidos: sem convolução com IRs (fase futura), sem timestretch
   real (varispeed), sem user-presets em ficheiro (só fábrica), 32 passos do
   gate e builds Win/Mac para depois. UI fixa 1280×620 (fase 6 de design).
@@ -70,8 +75,9 @@ Botão **RANDOM** na topbar: preset totalmente aleatório (poupa master/input).
   (AbletonLnF, BeatRuler).
 - `tests/` — `test_dsp` (58 checks: impulso, T60 Schroeder, determinismo,
   5 algos de delay) + `test_chain` (processador real: transparência, tails,
-  ordem/XFADE, fuzz próprio) + `test_ui` (27 checks de sessão heavy-user:
-  flips FWD|REV, cross-talk, resizes, presets, restore; correr sob xvfb).
+  ordem/XFADE, limiter, 20 RANDOMs audíveis, fuzz próprio) + `test_ui`
+  (32 checks de sessão heavy-user: flips FWD|REV, cross-talk, resizes,
+  presets, RANDOM, restore; correr sob xvfb).
   Correr: `cmake --build tests/build --target test_dsp test_chain test_ui`.
 
 ## Tabela de parâmetros (v0.2, 104 IDs únicos)

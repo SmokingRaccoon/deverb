@@ -305,6 +305,9 @@ void DeVerbProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     xfFwd.setCurrentAndTargetValue(1.f);
     xfRev.setCurrentAndTargetValue(1.f);
     smoothRevMix.setCurrentAndTargetValue(apvts.getRawParameterValue("rev_mix")->load());
+    limPeak = 0.f;
+    dspSr = sampleRate;
+    limRelCoef = std::exp(-1.f / (0.05f * (float) sampleRate));
 }
 
 void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -649,25 +652,37 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         beatIdx = (long) std::floor(tempo.ppqPosition);
     else
         beatIdx = (long) std::floor(procBeats);
-    procBeats += (double) n * tempo.bpm / 60.0 / getSampleRate();
+    procBeats += (double) n * tempo.bpm / 60.0 / dspSr;
     bool xfade = (xMode == 1) && (revMode != 0);
     bool even = (((beatIdx % 2) + 2) % 2) == 0;
     xfFwd.setTargetValue(! xfade || even ? 1.f : 0.f);
     xfRev.setTargetValue(! xfade || ! even ? 1.f : 0.f);
     smoothRevMix.setTargetValue(apvts.getRawParameterValue("rev_mix")->load());
 
+    // Limiter de segurança: peak follower (attack instantâneo, release 50 ms),
+    // ganho comum aos 2 canais. Só atua acima de -1 dBFS.
+    const float limCeil = 0.891251f; // -1 dBFS
+    const float limRel = limRelCoef;
+
     for (int i = 0; i < n; ++i)
     {
         const float gM = smoothMaster.getNextValue();
         const float gF = xfFwd.getNextValue();
         const float gR = xfRev.getNextValue() * smoothRevMix.getNextValue();
+        float mixed[2] = { 0.f, 0.f };
         for (int ch = 0; ch < nCh; ++ch)
         {
             float dry = buffer.getWritePointer(ch)[i];
             float fw = fwdBuf.getWritePointer(ch)[i];
             float rv = (revMode != 0) ? revBuf.getWritePointer(ch)[i] : 0.f;
-            buffer.getWritePointer(ch)[i] = (dry * (1.f - gF) + fw * gF + rv * gR) * gM;
+            mixed[ch] = (dry * (1.f - gF) + fw * gF + rv * gR) * gM;
         }
+        float peak = juce::jmax(std::abs(mixed[0]), nCh > 1 ? std::abs(mixed[1]) : 0.f);
+        limPeak = (peak > limPeak) ? peak : limPeak * limRel;
+        float gL = (limPeak > limCeil) ? limCeil / limPeak : 1.f;
+        buffer.getWritePointer(0)[i] = mixed[0] * gL;
+        if (nCh > 1)
+            buffer.getWritePointer(1)[i] = mixed[1] * gL;
     }
 }
 

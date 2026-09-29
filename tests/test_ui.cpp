@@ -251,7 +251,8 @@ int main()
             if (std::abs(proc.getParameters()[(int) i]->getValue() - before[i]) > 0.001f)
                 ++changed;
         }
-        CHECK(changed > total * 8 / 10, "RANDOM muda >80%% dos params (%d/%d)",
+        // RANDOM civilizado muda ~2/3 dos params (curated: alguns coincidem).
+        CHECK(changed > total / 2, "RANDOM muda >50%% dos params (%d/%d)",
               changed, total);
         CHECK(std::abs(proc.apvts.getRawParameterValue("master")->load() - 0.8f) < 1e-6f,
               "RANDOM poupa o master");

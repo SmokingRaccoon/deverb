@@ -5,6 +5,7 @@
 #include <cmath>
 #include <vector>
 #include "../Source/PluginProcessor.h"
+#include "../Source/core/FactoryPresets.h"
 
 static int failures = 0;
 #define CHECK(cond, ...) do { \
@@ -34,6 +35,7 @@ static double rms(const std::vector<float>& v, int from, int to)
 
 static int mainOrder();
 static int mainFuzz();
+static int mainCivil();
 int main()
 {
     const double sr = 48000.0;
@@ -53,9 +55,11 @@ int main()
         bool exact = true;
         auto runSine = [&](int fromBlock)
         {
+            // NOTA: amplitude 0.5 (abaixo do ceiling do limiter) para testar
+            // passthrough verdadeiro; o limiter testar-se-ia sempre.
             for (int i = 0; i < 512; ++i)
             {
-                float v = std::sin((fromBlock * 512 + i) * 0.01f);
+                float v = std::sin((fromBlock * 512 + i) * 0.01f) * 0.5f;
                 buf.setSample(0, i, v);
                 buf.setSample(1, i, v * 0.5f);
             }
@@ -152,10 +156,94 @@ int main()
 
     failures += mainOrder();
     failures += mainFuzz();
+    failures += mainCivil();
 
     if (failures == 0) std::printf("\nALL CHAIN TESTS PASSED\n");
     else std::printf("\n%d FAILURES\n", failures);
     return failures == 0 ? 0 : 1;
+}
+
+// --- Plugin civilizado: limiter + RANDOM sempre audível ---
+
+// Corre `total` amostras com feed e devolve RMS + pico da saída L.
+static void renderProc(DeVerbProcessor& p, int total, auto feed,
+                       float& rmsOut, float& peakOut)
+{
+    juce::MidiBuffer midi;
+    double e = 0.0;
+    int c = 0;
+    peakOut = 0.f;
+    int pos = 0, abs = 0;
+    while (pos < total)
+    {
+        int n = juce::jmin(512, total - pos);
+        juce::AudioBuffer<float> tmp(2, n);
+        for (int i = 0; i < n; ++i)
+        {
+            float v = feed(abs + pos + i);
+            tmp.setSample(0, i, v);
+            tmp.setSample(1, i, v);
+        }
+        p.processBlock(tmp, midi);
+        for (int i = 0; i < n; ++i)
+        {
+            float v = tmp.getSample(0, i);
+            e += (double) v * v;
+            ++c;
+            peakOut = juce::jmax(peakOut, std::abs(v));
+            if (! std::isfinite(v)) { peakOut = 1e9f; return; }
+        }
+        pos += n;
+    }
+    rmsOut = std::sqrt(e / (double) juce::jmax(1, c));
+}
+
+static int mainCivil()
+{
+    const double sr = 48000.0;
+
+    // --- C1. Limiter: entrada a arder não passa de -1 dBFS ---
+    {
+        DeVerbProcessor p;
+        p.prepareToPlay(sr, 512);
+        setF(p, "master", 1.f);
+        setF(p, "input_gain", 2.f); // máximo!
+        setF(p, "fwd_verb_mix", 1.f);
+        setF(p, "fwd_delay_mix", 0.5f);
+        float rms = 0.f, peak = 0.f;
+        renderProc(p, 48000,
+                   [](int i) { return std::sin(i * 0.05f) * 0.9f; }, rms, peak);
+        CHECK(peak <= 0.90f, "limiter trava a -1 dBFS (pico %f)", peak);
+        CHECK(rms > 0.3f, "limiter não esmaga (rms %f)", rms);
+    }
+
+    // --- C2. RANDOM civilizado: 20 seeds, sempre audível, sempre finito ---
+    {
+        bool allOk = true;
+        for (int seed = 1; seed <= 20 && allOk; ++seed)
+        {
+            DeVerbProcessor p;
+            p.prepareToPlay(sr, 512);
+            juce::Random rng(seed);
+            applyRealList(p.apvts, civilizedRandom(rng));
+            float rms = 0.f, peak = 0.f;
+            auto feed = [](int i)
+            {
+                float s = std::sin(i * 0.02f) * 0.6f;
+                if (i % 12000 < 64) s += 0.5f; // transiente periódico
+                return s;
+            };
+            renderProc(p, 96000, feed, rms, peak);
+            if (! (rms > 0.02f && peak <= 1.0f))
+            {
+                std::printf("  seed %d: rms %f peak %f\n", seed, rms, peak);
+                allOk = false;
+            }
+        }
+        CHECK(allOk, "20 RANDOMs civilizados todos audíveis e finitos");
+    }
+
+    return failures;
 }
 
 // --- Réplica do fuzz do pluginval: params aleatórios × inputs × SRs × blocos.

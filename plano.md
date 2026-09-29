@@ -737,6 +737,13 @@ ficheiro.
   é bypass transparente (apanhado pelo `test_chain`).
 - **Limiter do master adiado**: o §7.6 previa ceiling -1 dBFS; adiado com nota
   (picos medidos < 1.0 nos testes; voltar a avaliar com presets extremos).
+  **RESOLVIDO (v0.2)**: limiter implementado (peak follower, release 50 ms,
+  ganho comum stereo) + teste que trava picos a -1 dBFS.
+- **`getSampleRate()` sem host não é fiável**: o processador guardava o coef
+  de release do limiter calculado dele (lixo sem host → limiter morto e picos
+  a 2.78 nos testes). Regra: guardar `dspSr` no prepare e usar SEMPRE essa.
+- **Wow além do buffer**: delay 2200 ms + wow 20 ms excedia a DelayLine;
+  `maxDelaySec` 2.2 → 2.3 s de headroom.
 - **Escrita de ficheiros do teste**: `test_ui`/`test_chain` não tocam em disco.
 - **xdotool**: salto único de 50px não mexe knobs JUCE; usar 10×5px ou setas.
 - **`·` U+00B7 rende `Â·`**: só ASCII em texto pintado.

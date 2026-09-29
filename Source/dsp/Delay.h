@@ -44,7 +44,8 @@ public:
     void setTestDelaySamples(int samples) { testDelaySamples = samples; }
 
 private:
-    static constexpr float maxDelaySec = 2.2f;
+    // 2.3 s: 2.2 s de tempo máximo + margem para o wow (±20 ms).
+    static constexpr float maxDelaySec = 2.3f;
     static constexpr float tapFrac[4] = { 1.f, 0.75f, 0.5f, 0.25f };
     static constexpr float tapGain[4] = { 1.f, 0.7f, 0.5f, 0.35f };
 

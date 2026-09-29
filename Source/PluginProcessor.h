@@ -66,6 +66,10 @@ private:
     // XFADE: ganhos suavizados por engine + fase de beats interna.
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> xfFwd, xfRev, smoothRevMix;
     double procBeats = 0.0; // relógio livre (standalone / fallback)
+    // Limiter de segurança no master (ceiling -1 dBFS, attack instantâneo).
+    // Usa dspSr guardada no prepare (getSampleRate() sem host não é fiável).
+    float limPeak = 0.f, limRelCoef = 1.f;
+    double dspSr = 44100.0;
     std::atomic<bool> granActiveUi { false };
     std::atomic<int> gateStepUi { 0 };
     std::atomic<float> bpmUi { 120.f };
