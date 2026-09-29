@@ -100,18 +100,14 @@ jobs:
           fi
           echo "pluginval em: $PV" && chmod +x "$PV"
           VST3=$(find build -name "*.vst3" -maxdepth 4 | head -1)
-          "$PV" --validate "$VST3" --strictness-level 5
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            # pluginval incorpora o editor via XEmbed e rebenta sem display.
+            xvfb-run -a "$PV" --validate "$VST3" --strictness-level 5
+          else
+            "$PV" --validate "$VST3" --strictness-level 5
+          fi
 
-      # DEBUG TEMPORÁRIO (issue: segfault no teste Editor só no runner):
-      # corre o pluginval sob gdb para apanhar o backtrace exato do crash.
-      # Remover quando resolvido.
-      - name: pluginval sob gdb (debug crash Editor)
-        if: runner.os == 'Linux' && failure()
-        run: |
-          sudo apt-get install -y gdb
-          VST3=$(find build -name "*.vst3" -maxdepth 4 | head -1)
-          PV=$(find /tmp/pv -name pluginval -type f | head -1)
-          gdb --batch -ex run -ex bt --args "$PV" --validate "$VST3" --strictness-level 5 2>&1 | tail -40
+      # (removido o step de debug gdb: causa encontrada — ver nota no step pluginval)
 
       - name: auval (macOS, AU)
         if: runner.os == 'macOS'

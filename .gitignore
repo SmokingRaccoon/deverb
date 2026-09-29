@@ -1,6 +1,6 @@
-# builds
-build/
-tests/build/
+# builds (qualquer diretoria build*)
+build*/
+tests/build*/
 cmake-build-*/
 CMakeCache.txt
 CMakeFiles/
