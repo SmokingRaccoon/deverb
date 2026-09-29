@@ -1,0 +1,116 @@
+# CI do deVerb: compila Standalone+VST3(+LV2 no Linux, +AU no Mac),
+# corre testes + validadores e publica os binários como artefactos.
+# macOS corre em runner cloud (10x minutos) — por isso este workflow corre
+# em push/PR, e os artefactos mac servem para uso próprio (ad-hoc signed).
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            triplet: linux
+            formats: "Standalone;VST3;LV2"
+          - os: macos-14
+            triplet: mac
+            formats: "Standalone;VST3;AU"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build ccache xvfb \
+            libasound2-dev libjack-jackd2-dev ladspa-sdk \
+            libcurl4-openssl-dev libfreetype6-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev \
+            libxinerama-dev libxrandr-dev libxrender-dev libxi-dev \
+            libglu1-mesa-dev mesa-common-dev libegl-dev
+
+      - name: Deps (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja ccache
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: deverb-${{ matrix.triplet }}
+
+      - name: Configure plugin
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DDEVERB_FORMATS="${{ matrix.formats }}"
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          ${{ runner.os == 'macOS' && '-DCMAKE_OSX_ARCHITECTURES=x86_64;arm64' || '' }}
+
+      - name: Build plugin
+        run: cmake --build build
+
+      - name: Ad-hoc sign (macOS, precisa o auval carregar no ARM)
+        if: runner.os == 'macOS'
+        run: |
+          codesign --force --deep -s - build/deVerb_artefacts/Release/VST3/deVerb.vst3
+          codesign --force --deep -s - build/deVerb_artefacts/Release/Standalone/deVerb.app || true
+          codesign --force --deep -s - $(find build -name "*.component" -maxdepth 4 | head -1)
+
+      - name: Configure + build tests
+        run: >
+          cmake -S tests -B tests/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          ${{ runner.os == 'macOS' && '-DCMAKE_OSX_ARCHITECTURES=x86_64;arm64' || '' }}
+          && cmake --build tests/build --target test_dsp test_chain test_ui
+
+      - name: Run DSP + chain tests
+        run: ./tests/build/test_dsp && ./tests/build/test_chain
+
+      - name: Run UI session tests (Linux, Xvfb)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a ./tests/build/test_ui
+
+      - name: pluginval
+        run: |
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            curl -sL -o /tmp/pv.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Linux.zip
+          else
+            curl -sL -o /tmp/pv.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
+          fi
+          rm -rf /tmp/pv && mkdir -p /tmp/pv && unzip -o -q /tmp/pv.zip -d /tmp/pv
+          PV=$(find /tmp/pv -name pluginval -type f | head -1)
+          if [ -z "$PV" ]; then
+            PV=$(find /tmp/pv -name "pluginval*" -type d | head -1)/Contents/MacOS/pluginval
+          fi
+          echo "pluginval em: $PV" && chmod +x "$PV"
+          VST3=$(find build -name "*.vst3" -maxdepth 4 | head -1)
+          "$PV" --validate "$VST3" --strictness-level 5
+
+      - name: auval (macOS, AU)
+        if: runner.os == 'macOS'
+        run: |
+          AU=$(find build -name "*.component" -maxdepth 4 | head -1)
+          echo "A testar $AU"
+          auval -v aufx dVr1 Pdlb
+
+      - name: Upload artefactos
+        uses: actions/upload-artifact@v4
+        with:
+          name: deverb-${{ matrix.triplet }}
+          path: build/deVerb_artefacts/Release/

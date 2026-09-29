@@ -1,0 +1,26 @@
+# builds
+build/
+tests/build/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.o
+*.a
+*.so
+# embalagens locais
+*.vst3
+*.lv2
+*.component
+# sistema / editores
+.DS_Store
+*~
+.vscode/
+.idea/
+# settings locais do standalone (estado, não código)
+*.settings
+# segredos: nunca commitar tokens/keys
+*.pem
+*.key
+.env
