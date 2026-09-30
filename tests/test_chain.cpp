@@ -284,7 +284,8 @@ static int mainPower()
 // --- Plugin civilizado: limiter + RANDOM sempre audível ---
 
 // Corre `total` amostras com feed e devolve RMS + pico da saída L.
-static void renderProc(DeVerbProcessor& p, int total, auto feed,
+template <typename FeedFn>
+static void renderProc(DeVerbProcessor& p, int total, FeedFn feed,
                        float& rmsOut, float& peakOut)
 {
     juce::MidiBuffer midi;
