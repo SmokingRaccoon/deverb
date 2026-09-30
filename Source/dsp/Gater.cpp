@@ -3,6 +3,7 @@
 void Gater::prepare(double sr)
 {
     sampleRate = sr;
+    pw.prepare(sr);
     reset();
 }
 
@@ -104,11 +105,14 @@ void Gater::process(juce::AudioBuffer<float>& buffer, const TempoInfo& tempo)
         }
 
         float inL = buffer.getSample(0, i);
-        buffer.setSample(0, i, inL * dry + inL * gL * mix);
+        const float e = pw.next(); // rampa de bypass
+        const float wetG = mix * e;
+        const float dryG = dry + (1.f - dry) * (1.f - e); // e=0 → passthrough
+        buffer.setSample(0, i, inL * dryG + inL * gL * wetG);
         if (nCh > 1)
         {
             float inR = buffer.getSample(1, i);
-            buffer.setSample(1, i, inR * dry + inR * gR * mix);
+            buffer.setSample(1, i, inR * dryG + inR * gR * wetG);
         }
     }
 }

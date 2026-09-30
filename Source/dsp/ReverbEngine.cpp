@@ -334,6 +334,7 @@ void Reverb::prepare(double sampleRate, int maxBlockSize)
 
     juce::dsp::ProcessSpec spec { sr, (juce::uint32) maxBlockSize, 2 };
     lpL.prepare(spec); lpR.prepare(spec); hpL.prepare(spec); hpR.prepare(spec);
+    pw.prepare(sr);
     reset();
 }
 
@@ -391,6 +392,10 @@ void Reverb::setFrozen(bool f)
     plate.setFrozen(f);
     shimmer.setFrozen(f);
 }
+
+void Reverb::setEnabled(bool b)      { pw.set(b); }
+bool Reverb::isBypassed() const      { return pw.silent(); }
+bool Reverb::takeClear()             { return pw.takeClear(); }
 
 void Reverb::setMix(float m) { smoothMix.setTargetValue(juce::jlimit(0.f, 1.f, m)); }
 
@@ -473,9 +478,12 @@ void Reverb::process(juce::AudioBuffer<float>& buffer)
         wL *= fade;
         wR *= fade;
 
-        buffer.setSample(0, i, inL * dry + wL * mix);
+        const float e = pw.next(); // rampa de bypass
+        const float wetG = mix * e;
+        const float dryG = dry + (1.f - dry) * (1.f - e);
+        buffer.setSample(0, i, inL * dryG + wL * wetG);
         if (nCh > 1)
-            buffer.setSample(1, i, inR * dry + wR * mix);
+            buffer.setSample(1, i, inR * dryG + wR * wetG);
     }
 }
 

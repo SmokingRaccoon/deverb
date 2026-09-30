@@ -749,6 +749,9 @@ ficheiro.
 - **`·` U+00B7 rende `Â·`**: só ASCII em texto pintado.
 - **Settings stale**: o standalone guarda estado ao sair; após mudar params
   no código, apagar `~/.config/deVerb.settings` (nota no README).
+- **Bypass por módulo (v0.3)**: 8 switches `*_on` com helper `EnableRamp`
+  (rampa 5 ms no wet, skip sem CPU, clear único sem tails); REV segue FWD
+  via links; botões PWR nos headers ligados ao alvo FWD|REV.
 
 ## 18. Glossário rápido
 

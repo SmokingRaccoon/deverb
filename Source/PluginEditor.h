@@ -38,6 +38,11 @@ private:
     // Modo global de edição FWD|REV (um interruptor na topbar religa tudo).
     juce::ToggleButton fwdModeBtn { "FWD" }, revModeBtn { "REV" };
     bool showRev = false;
+    // PWR por coluna (liga/desliga o módulo mostrado; entra nos binds).
+    juce::ToggleButton gatePwrBtn { "PWR" }, delayPwrBtn { "PWR" },
+                       verbPwrBtn { "PWR" }, granPwrBtn { "PWR" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>
+        gatePwrAttach, delayPwrAttach, verbPwrAttach, granPwrAttach;
     // Faixa REV na 2ª linha da topbar: engine + links + trims.
     juce::ComboBox revModeBox, revSourceBox, revCaptureBox;
     // Fase 6: preset global (topbar) + routing (faixa REV).

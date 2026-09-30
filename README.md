@@ -57,8 +57,9 @@ freeze/interrupt/manual OFF, morph contido; master/input fixos).
   (beats pares FWD, ímpares REV).
 - Segurança: limiter no master (ceiling -1 dBFS, attack instantâneo);
   feedbacks capados; wow com headroom de buffer; Off = bypass transparente.
-- Validado: `pluginval --strictness-level 10` → SUCCESS; 58 testes DSP
-  offline + 10 ponta-a-ponta (incl. limiter e 20 RANDOMs audíveis) + 32 de
+- Validado: `pluginval --strictness-level 10` → SUCCESS; 78 testes DSP
+  offline (incl. bypass/transparência/clear) + 13 ponta-a-ponta (incl.
+  limiter, 20 RANDOMs audíveis, bypass exato/anti-clique/links) + 38 de
   sessão UI; scan Carla VST3+LV2 OK.
 - Limites conhecidos: sem convolução com IRs (fase futura), sem timestretch
   real (varispeed), sem user-presets em ficheiro (só fábrica), 32 passos do
@@ -73,14 +74,15 @@ freeze/interrupt/manual OFF, morph contido; master/input fixos).
 - `Source/` — `core/` (TempoInfo, RevLinker, FactoryPresets), `dsp/`
   (Delay, Gater, ReverbEngine, Granular, ReverseEngine), `ui/`
   (AbletonLnF, BeatRuler).
-- `tests/` — `test_dsp` (58 checks: impulso, T60 Schroeder, determinismo,
-  5 algos de delay) + `test_chain` (processador real: transparência, tails,
-  ordem/XFADE, limiter, 20 RANDOMs audíveis, fuzz próprio) + `test_ui`
-  (32 checks de sessão heavy-user: flips FWD|REV, cross-talk, resizes,
-  presets, RANDOM, restore; correr sob xvfb).
+- `tests/` — `test_dsp` (78 checks: impulso, T60 Schroeder, determinismo,
+  5 algos de delay, bypass/transparência/clear) + `test_chain` (processador
+  real: transparência, tails, ordem/XFADE, limiter, 20 RANDOMs audíveis,
+  bypass exato + anti-clique + links, fuzz próprio) + `test_ui`
+  (38 checks de sessão heavy-user: flips FWD|REV, cross-talk, resizes,
+  presets, RANDOM, PWR, restore; correr sob xvfb).
   Correr: `cmake --build tests/build --target test_dsp test_chain test_ui`.
 
-## Tabela de parâmetros (v0.2, 104 IDs únicos)
+## Tabela de parâmetros (112 IDs únicos)
 
 Gerada do `createParams` — se algum ID se repetir, o teste de geração acusa.
 `fwd_*` = cadeia normal, `rev_*` = cadeia reversa (editável com o interruptor
@@ -94,6 +96,8 @@ global FWD|REV da topbar), `gr_*` = granular FWD, `rev_gr_*` = granular REV.
 - `rev_throw`/`gr_manual`/`rev_gr_manual`: toggles latching — ligar dispara
   (flanco); desligar+ligar redispara. THROW também dispara por nota MIDI.
 - `gr_interrupt`: em vez de misturar, o glitch pausa o dry.
+- `*_on` (PWR por coluna): bypass com rampa de 5 ms, limpa buffers
+  ao desligar (sem tails) e não gasta CPU parado; REV segue FWD via links.
 - `x_mode` XFade: beats pares FWD, ímpares REV (crossfade 10 ms); sem REV = Add.
 - `chain_order`: mesma ordem nas duas cadeias.
 - `rev_source` Dry = pós input-gain; PostFWD = saída da cadeia FWD.
@@ -102,6 +106,8 @@ global FWD|REV da topbar), `gr_*` = granular FWD, `rev_gr_*` = granular REV.
 - Delay Reverse ignora feedback/damping; Tape sem drive = Digital.
 - Multitap: taps 1, 3/4, 1/2, 1/4 com ganhos 1/.7/.5/.35 (fixos no v1).
 
+| ID | Nome | Tipo | Range/Opções | Default |
+|----|------|------|----------------|---------|
 | `input_gain` | Input Gain | float | 0.f, 2.f, 0.01f | 1.f |
 | `fwd_mix` | FWD Mix | float | 0.f, 1.f, 0.01f | 1.f |
 | `morph` | Morph | float | 0.f, 1.f, 0.01f | 0.f |
@@ -192,6 +198,14 @@ global FWD|REV da topbar), `gr_*` = granular FWD, `rev_gr_*` = granular REV.
 | `fwd_verb_freeze` | FWD Verb Freeze | bool | - | false |
 | `gr_manual` | Gran Manual | bool | - | false |
 | `gr_interrupt` | Gran Interrupt | bool | - | false |
+| `fwd_gate_on` | FWD Gate On | bool | - | true |
+| `fwd_delay_on` | FWD Delay On | bool | - | true |
+| `fwd_verb_on` | FWD Verb On | bool | - | true |
+| `gr_on` | Gran On | bool | - | true |
+| `rev_gate_on` | REV Gate On | bool | - | true |
+| `rev_delay_on` | REV Delay On | bool | - | true |
+| `rev_verb_on` | REV Verb On | bool | - | true |
+| `rev_gr_on` | REV Gran On | bool | - | true |
 | `rev_throw` | REV Throw | bool | - | false |
 | `link_master` | Link Master | bool | - | true |
 | `link_gate` | Link Gate | bool | - | true |

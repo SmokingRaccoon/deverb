@@ -1,6 +1,7 @@
 #pragma once
 #include <juce_audio_basics/juce_audio_basics.h>
 #include "../core/TempoInfo.h"
+#include "../core/EnableRamp.h"
 
 // Granular/glitch (Fase 4). Um anel de captura (até 4 s) + uma voz de
 // reprodução com direção/rate/loop por modo:
@@ -41,6 +42,10 @@ public:
     void setMix(float m)             { mix = juce::jlimit(0.f, 1.f, m); }
     void setInterrupt(bool b)        { interrupt = b; }
     void setInternalBpm(double bpm)  { internalBpm = juce::jlimit(40.0, 240.0, bpm); }
+    // Bypass por módulo (Fase 8). Ver EnableRamp.
+    void setEnabled(bool b)          { pw.set(b); }
+    bool isBypassed() const          { return pw.silent(); }
+    bool takeClear()                 { return pw.takeClear(); }
 
     void process(juce::AudioBuffer<float>& buffer, const TempoInfo& tempo);
 
@@ -76,6 +81,7 @@ private:
     int releaseLeft = 0;       // fade de saída ao libertar
     float outFade = 0.f;       // 0..1 envelope de saída
     float dryCut = 1.f;        // 1 normal, 0 em interrupt (com rampa)
+    EnableRamp pw;             // bypass por módulo
 
     // Relógio p/ quantização + detetores:
     double internalBeats = 0.0, lastQuantum = -1.0;

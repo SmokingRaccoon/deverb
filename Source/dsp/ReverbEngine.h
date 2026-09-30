@@ -1,5 +1,6 @@
 #pragma once
 #include <juce_dsp/juce_dsp.h>
+#include "../core/EnableRamp.h"
 #include <vector>
 #include <cmath>
 
@@ -200,6 +201,10 @@ public:
     void setFrozen(bool f);
     void setMix(float m);
     void setTone(float locutHz, float hicutHz);
+    // Bypass por módulo (Fase 8). Ver EnableRamp (core/).
+    void setEnabled(bool b);
+    bool isBypassed() const;
+    bool takeClear();
 
     // Chamar quando algo/size mudam de "escalão": fade + (só p/ algo) reset.
     void noteStructuralChange(bool resetEngines);
@@ -222,6 +227,7 @@ private:
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothFade; // estrutural
     float width = 1.f;
     bool frozen = false;
+    EnableRamp pw; // bypass por módulo
     juce::dsp::IIR::Filter<float> lpL, lpR, hpL, hpR;
     float lastLocut = -1.f, lastHicut = -1.f;
 };

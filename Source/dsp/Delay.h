@@ -1,6 +1,7 @@
 #pragma once
 #include <juce_dsp/juce_dsp.h>
 #include "ReverseEngine.h"
+#include "../core/EnableRamp.h"
 
 // Delay stereo com 5 algoritmos (Fase 7). Uma DelayLine com interpolação
 // Lagrange3rd + one-pole lowpass no loop; feedback capado; freeze; mix.
@@ -35,6 +36,10 @@ public:
     void setWowDepthMs(float ms);    // 0..20 ms de vagueio
     void setSpread(float s);         // 0..1 cruzamento pingpong
     void setTempoBpm(double bpm);    // p/ janela do modo Reverse
+    // Bypass por módulo (Fase 8): rampa no wet + skip + clear. Ver EnableRamp.
+    void setEnabled(bool b)          { pw.set(b); }
+    bool isBypassed() const          { return pw.silent(); }
+    bool takeClear()                 { return pw.takeClear(); }
 
     // Processa in-place um buffer stereo.
     void process(juce::AudioBuffer<float>& buffer);
@@ -66,4 +71,5 @@ private:
     // Voz reverse (modo Reverse): anel próprio + scratch.
     ReverseEngine revVoice;
     juce::AudioBuffer<float> revTmp;
+    EnableRamp pw;
 };

@@ -135,6 +135,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout DeVerbProcessor::createParam
         "gr_mix", "Gran Mix", juce::NormalisableRange<float>(0.f, 1.f, 0.01f), 0.5f));
     layout.add(std::make_unique<juce::AudioParameterBool>(
         "gr_interrupt", "Gran Interrupt", false));
+    // --- Fase 8: on/off por módulo (IDs congelados; default ON) ---
+    layout.add(std::make_unique<juce::AudioParameterBool>("fwd_gate_on", "FWD Gate On", true));
+    layout.add(std::make_unique<juce::AudioParameterBool>("fwd_delay_on", "FWD Delay On", true));
+    layout.add(std::make_unique<juce::AudioParameterBool>("fwd_verb_on", "FWD Verb On", true));
+    layout.add(std::make_unique<juce::AudioParameterBool>("gr_on", "Gran On", true));
+    layout.add(std::make_unique<juce::AudioParameterBool>("rev_gate_on", "REV Gate On", true));
+    layout.add(std::make_unique<juce::AudioParameterBool>("rev_delay_on", "REV Delay On", true));
+    layout.add(std::make_unique<juce::AudioParameterBool>("rev_verb_on", "REV Verb On", true));
+    layout.add(std::make_unique<juce::AudioParameterBool>("rev_gr_on", "REV Gran On", true));
     // --- Fase 5: motor REV + links (IDs congelados a partir do v1) ---
     // Engine:
     layout.add(std::make_unique<juce::AudioParameterChoice>(
@@ -450,34 +459,48 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     fwdGran.setMix(apvts.getRawParameterValue("gr_mix")->load());
     fwdGran.setInterrupt(apvts.getRawParameterValue("gr_interrupt")->load() > 0.5f);
     fwdGran.setInternalBpm(tempo.bpm);
+    fwdGate.setEnabled(apvts.getRawParameterValue("fwd_gate_on")->load() > 0.5f);
+    fwdDelay.setEnabled(apvts.getRawParameterValue("fwd_delay_on")->load() > 0.5f);
+    fwdVerb.setEnabled(apvts.getRawParameterValue("fwd_verb_on")->load() > 0.5f);
+    fwdGran.setEnabled(apvts.getRawParameterValue("gr_on")->load() > 0.5f);
+
+    // --- Fase 8: runner com skip/clear. Módulos silenciosos nem correm
+    // (poupa CPU); ao desligar, os buffers limpam-se uma vez (sem tails).
+    auto runStage = [](auto& mod, auto&& processFn)
+    {
+        if (! mod.isBypassed())
+            processFn();
+        else if (mod.takeClear())
+            mod.reset();
+    };
 
     // --- Fase 6: corre a cadeia FWD no scratch, pela ordem configurada.
     // 0 = Gate·Delay·Verb·Gran | 1 = G·V·D·Gr | 2 = D·G·V·Gr | 3 = V·D·G·Gr.
     switch (chainOrder)
     {
         case 1:
-            fwdGate.process(fwdBuf, tempo);
-            fwdVerb.process(fwdBuf);
-            fwdDelay.process(fwdBuf);
-            fwdGran.process(fwdBuf, tempo);
+            runStage(fwdGate, [&]{ fwdGate.process(fwdBuf, tempo); });
+            runStage(fwdVerb, [&]{ fwdVerb.process(fwdBuf); });
+            runStage(fwdDelay, [&]{ fwdDelay.process(fwdBuf); });
+            runStage(fwdGran, [&]{ fwdGran.process(fwdBuf, tempo); });
             break;
         case 2:
-            fwdDelay.process(fwdBuf);
-            fwdGate.process(fwdBuf, tempo);
-            fwdVerb.process(fwdBuf);
-            fwdGran.process(fwdBuf, tempo);
+            runStage(fwdDelay, [&]{ fwdDelay.process(fwdBuf); });
+            runStage(fwdGate, [&]{ fwdGate.process(fwdBuf, tempo); });
+            runStage(fwdVerb, [&]{ fwdVerb.process(fwdBuf); });
+            runStage(fwdGran, [&]{ fwdGran.process(fwdBuf, tempo); });
             break;
         case 3:
-            fwdVerb.process(fwdBuf);
-            fwdDelay.process(fwdBuf);
-            fwdGate.process(fwdBuf, tempo);
-            fwdGran.process(fwdBuf, tempo);
+            runStage(fwdVerb, [&]{ fwdVerb.process(fwdBuf); });
+            runStage(fwdDelay, [&]{ fwdDelay.process(fwdBuf); });
+            runStage(fwdGate, [&]{ fwdGate.process(fwdBuf, tempo); });
+            runStage(fwdGran, [&]{ fwdGran.process(fwdBuf, tempo); });
             break;
         default:
-            fwdGate.process(fwdBuf, tempo);
-            fwdDelay.process(fwdBuf);
-            fwdVerb.process(fwdBuf);
-            fwdGran.process(fwdBuf, tempo);
+            runStage(fwdGate, [&]{ fwdGate.process(fwdBuf, tempo); });
+            runStage(fwdDelay, [&]{ fwdDelay.process(fwdBuf); });
+            runStage(fwdVerb, [&]{ fwdVerb.process(fwdBuf); });
+            runStage(fwdGran, [&]{ fwdGran.process(fwdBuf, tempo); });
             break;
     }
     granActiveUi.store(fwdGran.isActive());
@@ -612,33 +635,37 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         revGran.setMix(RL::resolveContinuous(lGran, morph, RV("gr_mix"), RV("rev_gr_mix"), 0.f, 1.f));
         revGran.setInterrupt(RL::resolveBool(lGran, RB("gr_interrupt"), RB("rev_gr_interrupt")));
         revGran.setInternalBpm(tempo.bpm);
+        revGate.setEnabled(RL::resolveBool(lGate, RB("fwd_gate_on"), RB("rev_gate_on")));
+        revDelay.setEnabled(RL::resolveBool(lDelay, RB("fwd_delay_on"), RB("rev_delay_on")));
+        revVerb.setEnabled(RL::resolveBool(lVerb, RB("fwd_verb_on"), RB("rev_verb_on")));
+        revGran.setEnabled(RL::resolveBool(lGran, RB("gr_on"), RB("rev_gr_on")));
 
-        // Cadeia gémea na mesma ordem da FWD.
+        // Cadeia gémea na mesma ordem da FWD, com skip/clear por módulo.
         switch (chainOrder)
         {
             case 1:
-                revGate.process(revView, tempo);
-                revVerb.process(revView);
-                revDelay.process(revView);
-                revGran.process(revView, tempo);
+                runStage(revGate, [&]{ revGate.process(revView, tempo); });
+                runStage(revVerb, [&]{ revVerb.process(revView); });
+                runStage(revDelay, [&]{ revDelay.process(revView); });
+                runStage(revGran, [&]{ revGran.process(revView, tempo); });
                 break;
             case 2:
-                revDelay.process(revView);
-                revGate.process(revView, tempo);
-                revVerb.process(revView);
-                revGran.process(revView, tempo);
+                runStage(revDelay, [&]{ revDelay.process(revView); });
+                runStage(revGate, [&]{ revGate.process(revView, tempo); });
+                runStage(revVerb, [&]{ revVerb.process(revView); });
+                runStage(revGran, [&]{ revGran.process(revView, tempo); });
                 break;
             case 3:
-                revVerb.process(revView);
-                revDelay.process(revView);
-                revGate.process(revView, tempo);
-                revGran.process(revView, tempo);
+                runStage(revVerb, [&]{ revVerb.process(revView); });
+                runStage(revDelay, [&]{ revDelay.process(revView); });
+                runStage(revGate, [&]{ revGate.process(revView, tempo); });
+                runStage(revGran, [&]{ revGran.process(revView, tempo); });
                 break;
             default:
-                revGate.process(revView, tempo);
-                revDelay.process(revView);
-                revVerb.process(revView);
-                revGran.process(revView, tempo);
+                runStage(revGate, [&]{ revGate.process(revView, tempo); });
+                runStage(revDelay, [&]{ revDelay.process(revView); });
+                runStage(revVerb, [&]{ revVerb.process(revView); });
+                runStage(revGran, [&]{ revGran.process(revView, tempo); });
                 break;
         }
     }

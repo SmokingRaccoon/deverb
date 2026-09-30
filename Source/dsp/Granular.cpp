@@ -3,6 +3,7 @@
 void Granular::prepare(double sr)
 {
     sampleRate = sr;
+    pw.prepare(sr);
     cap = (int) (ringSec * sr) + 64;
     ringL.assign((size_t) cap, 0.f);
     ringR.assign((size_t) cap, 0.f);
@@ -255,9 +256,12 @@ void Granular::process(juce::AudioBuffer<float>& buffer, const TempoInfo& tempo)
         dryCut += (wantCut - dryCut) * cutA;
 
         float dry = (mode == Mode::Off) ? 1.f : (1.f - mix) * dryCut;
-        buffer.setSample(0, i, inL * dry + wetL * mix);
+        const float e = pw.next(); // rampa de bypass
+        const float wetG = mix * e;
+        const float dryG = dry + (1.f - dry) * (1.f - e);
+        buffer.setSample(0, i, inL * dryG + wetL * wetG);
         if (nCh > 1)
-            buffer.setSample(1, i, inR * dry + wetR * mix);
+            buffer.setSample(1, i, inR * dryG + wetR * wetG);
     }
 
     activeUi.store(playing);

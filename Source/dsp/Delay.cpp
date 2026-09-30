@@ -26,6 +26,7 @@ void Delay::prepare(double sr, int maxBlockSize)
 
     revVoice.prepare(sr);
     revTmp.setSize(2, maxBlockSize, false, false, true);
+    pw.prepare(sr);
     reset();
 }
 
@@ -98,12 +99,14 @@ void Delay::process(juce::AudioBuffer<float>& buffer)
         stub.bpm = bpm;
         revVoice.renderBlock(view, stub, bpm, false);
 
-        for (int ch = 0; ch < nCh; ++ch)
+        for (int i = 0; i < n; ++i)
         {
-            auto* d = buffer.getWritePointer(ch);
-            auto* w = view.getWritePointer(ch);
-            for (int i = 0; i < n; ++i)
-                d[i] = d[i] * dry + w[i] * mix;
+            const float e = pw.next(); // 1× por amostra
+            const float wetG = mix * e;
+            const float dryG = dry + (1.f - dry) * (1.f - e); // e=0 → dry total
+            for (int ch = 0; ch < nCh; ++ch)
+                buffer.getWritePointer(ch)[i] =
+                    buffer.getWritePointer(ch)[i] * dryG + view.getWritePointer(ch)[i] * wetG;
         }
         return;
     }
@@ -195,8 +198,11 @@ void Delay::process(juce::AudioBuffer<float>& buffer)
                 line.pushSample(1, inR * (1.f - frz) + dampStateR * fb);
         }
 
-        buffer.setSample(0, i, inL * dry + wetL * mix);
+        const float e = pw.next(); // rampa de bypass: 1× por amostra
+        const float wetG = mix * e;
+        const float dryG = dry + (1.f - dry) * (1.f - e);
+        buffer.setSample(0, i, inL * dryG + wetL * wetG);
         if (nCh > 1)
-            buffer.setSample(1, i, inR * dry + wetR * mix);
+            buffer.setSample(1, i, inR * dryG + wetR * wetG);
     }
 }

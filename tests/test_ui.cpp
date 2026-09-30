@@ -29,9 +29,11 @@ struct UiSessionDriver
     // Referências públicas p/ os widgets (ligadas no ctor, onde há acesso).
     juce::Slider &fb, &decay, &master;
     juce::ComboBox &order, &xfade, &note, &algo;
+    juce::ToggleButton &gatePwr;
     explicit UiSessionDriver(DeVerbEditor& e, DeVerbProcessor& p)
         : ed(e), proc(p), fb(e.fbSlider), decay(e.decaySlider), master(e.masterSlider),
-          order(e.orderBox), xfade(e.xfadeBox), note(e.noteBox), algo(e.delayAlgoBox) {}
+          order(e.orderBox), xfade(e.xfadeBox), note(e.noteBox), algo(e.delayAlgoBox),
+          gatePwr(e.gatePwrBtn) {}
 
     bool stepState(int i) { return ed.stepButtons[i].getToggleState(); }
     void clickRandom() { ed.randomButton.triggerClick(); pump(); }
@@ -266,6 +268,21 @@ int main()
         }
         CHECK(inRange, "RANDOM dentro de [0,1]");
         CHECK(noisyFinite(proc), "DSP finito após RANDOM");
+    }
+
+    // --- U7. PWR segue o alvo FWD|REV sem cross-talk ---
+    {
+        d.flipToFwd();
+        d.gatePwr.setToggleState(false, juce::sendNotificationSync);
+        CHECK(d.stored("fwd_gate_on") == 0.f, "PWR desliga fwd_gate_on");
+        CHECK(d.stored("rev_gate_on") == 1.f, "rev_gate_on intacto");
+        d.flipToRev();
+        CHECK(d.gatePwr.getToggleState() == true, "em REV o PWR mostra rev (ON)");
+        d.gatePwr.setToggleState(false, juce::sendNotificationSync);
+        CHECK(d.stored("rev_gate_on") == 0.f, "PWR desliga rev_gate_on");
+        d.flipToFwd();
+        CHECK(d.gatePwr.getToggleState() == false, "de volta a FWD mostra OFF");
+        CHECK(d.stored("fwd_gate_on") == 0.f, "fwd_gate_on intacto");
     }
 
     if (failures == 0) std::printf("\nALL UI SESSION TESTS PASSED\n");

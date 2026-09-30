@@ -36,6 +36,7 @@ static double rms(const std::vector<float>& v, int from, int to)
 static int mainOrder();
 static int mainFuzz();
 static int mainCivil();
+static int mainPower();
 int main()
 {
     const double sr = 48000.0;
@@ -157,10 +158,127 @@ int main()
     failures += mainOrder();
     failures += mainFuzz();
     failures += mainCivil();
+    failures += mainPower();
 
     if (failures == 0) std::printf("\nALL CHAIN TESTS PASSED\n");
     else std::printf("\n%d FAILURES\n", failures);
     return failures == 0 ? 0 : 1;
+}
+
+// --- Fase 8: bypass por módulo no processador ---
+
+static void setB(DeVerbProcessor& p, const char* id, bool b)
+{
+    if (auto* par = p.apvts.getParameter(id))
+        par->setValueNotifyingHost(b ? 1.f : 0.f);
+}
+
+static int mainPower()
+{
+    const double sr = 48000.0;
+    juce::MidiBuffer midi;
+
+    // --- P1. Tudo off = passthrough exato (após settle) ---
+    {
+        DeVerbProcessor p;
+        p.prepareToPlay(sr, 512);
+        setF(p, "master", 1.f);
+        setB(p, "fwd_gate_on", false);
+        setB(p, "fwd_delay_on", false);
+        setB(p, "fwd_verb_on", false);
+        setB(p, "gr_on", false);
+        juce::AudioBuffer<float> buf(2, 512);
+        for (int b = 0; b < 20; ++b) // settle: rampas de 5 ms
+        {
+            for (int i = 0; i < 512; ++i)
+            {
+                float v = std::sin((b * 512 + i) * 0.01f) * 0.5f;
+                buf.setSample(0, i, v);
+                buf.setSample(1, i, v);
+            }
+            p.processBlock(buf, midi);
+        }
+        bool exact = true;
+        for (int b = 0; b < 5 && exact; ++b)
+        {
+            for (int i = 0; i < 512; ++i)
+            {
+                float v = std::sin((b * 512 + i) * 0.01f) * 0.5f;
+                buf.setSample(0, i, v);
+                buf.setSample(1, i, v);
+            }
+            juce::AudioBuffer<float> ref(2, 512);
+            ref.copyFrom(0, 0, buf, 0, 0, 512);
+            ref.copyFrom(1, 0, buf, 1, 0, 512);
+            p.processBlock(buf, midi);
+            for (int ch = 0; ch < 2 && exact; ++ch)
+                for (int i = 0; i < 512; ++i)
+                    if (buf.getSample(ch, i) != ref.getSample(ch, i)) exact = false;
+        }
+        CHECK(exact, "tudo off = passthrough exato");
+    }
+
+    // --- P2. Toggle a meio do stream não clica ---
+    {
+        DeVerbProcessor p;
+        p.prepareToPlay(sr, 512);
+        setF(p, "master", 1.f);
+        setF(p, "fwd_delay_mix", 0.5f);
+        setF(p, "fwd_delay_fb", 0.5f);
+        juce::AudioBuffer<float> buf(2, 512);
+        float maxStep = 0.f;
+        float prev = 0.f;
+        bool first = true;
+        for (int b = 0; b < 40; ++b)
+        {
+            for (int i = 0; i < 512; ++i)
+            {
+                float v = std::sin((b * 512 + i) * 0.01f) * 0.5f;
+                buf.setSample(0, i, v);
+                buf.setSample(1, i, v);
+            }
+            if (b == 20) setB(p, "fwd_delay_on", false); // toggle a meio!
+            p.processBlock(buf, midi);
+            for (int i = 0; i < 512; ++i)
+            {
+                float v = buf.getSample(0, i);
+                if (! first) maxStep = juce::jmax(maxStep, std::abs(v - prev));
+                first = false;
+                prev = v;
+                if (! std::isfinite(v)) { maxStep = 1e9f; break; }
+            }
+        }
+        CHECK(maxStep < 0.2f, "toggle delay sem clique (max step %f)", maxStep);
+    }
+
+    // --- P3. Link: REV segue o bypass do FWD ---
+    {
+        DeVerbProcessor p;
+        p.prepareToPlay(sr, 512);
+        setF(p, "master", 1.f);
+        setB(p, "fwd_gate_on", false); // REV linkado segue
+        setF(p, "fwd_delay_mix", 0.f);
+        setF(p, "fwd_verb_mix", 0.f);
+        setI(p, "rev_mode", 1);
+        setF(p, "rev_mix", 1.f);
+        setF(p, "rev_duck", 0.f);
+        juce::AudioBuffer<float> buf(2, 512);
+        std::vector<float> out;
+        for (int b = 0; b < 100; ++b)
+        {
+            for (int i = 0; i < 512; ++i) { buf.setSample(0, i, 1.f); buf.setSample(1, i, 1.f); }
+            p.processBlock(buf, midi);
+            for (int i = 0; i < 512; ++i) out.push_back(buf.getSample(0, i));
+        }
+        // Gate bypassed nas duas cadeias + resto neutro: saída ≈ DC,
+        // limitada ao ceiling do limiter (-1 dBFS = 0.891).
+        double m = 0.0;
+        for (size_t i = 20000; i < out.size(); ++i) m += out[i];
+        m /= (double) (out.size() - 20000);
+        CHECK(m > 0.85, "link: REV segue bypass do FWD (média %f)", m);
+    }
+
+    return failures;
 }
 
 // --- Plugin civilizado: limiter + RANDOM sempre audível ---

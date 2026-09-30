@@ -1,6 +1,7 @@
 #pragma once
 #include <juce_audio_basics/juce_audio_basics.h>
 #include "../core/TempoInfo.h"
+#include "../core/EnableRamp.h"
 
 // Trance gate (Fase 2). Ganho por amostra a partir de fase rítmica:
 // ou da posição do host (ppq) ou de relógio interno com resets.
@@ -27,6 +28,10 @@ public:
     void setTrigMode(TrigMode m)     { trigMode = m; }
     void setEnvThrDb(float db)       { envThr = std::pow(10.f, juce::jlimit(-60.f, 0.f, db) / 20.f); }
     void setInternalBpm(double bpm)  { internalBpm = juce::jlimit(40.0, 240.0, bpm); }
+    // Bypass por módulo (Fase 8). Ver EnableRamp.
+    void setEnabled(bool b)          { pw.set(b); }
+    bool isBypassed() const          { return pw.silent(); }
+    bool takeClear()                 { return pw.takeClear(); }
 
     // Varre o MIDI do bloco à procura de note-on (modo Midi = restart).
     // Chamar antes de process() para o mesmo bloco.
@@ -70,5 +75,6 @@ private:
     int cooldownLeft = 0;        // amostras até permitir novo retrigger
     bool resetPending = false;   // pedido por scanMidi
     float gateState = 1.f;       // ganho suavizado atual
+    EnableRamp pw;               // bypass por módulo
     std::atomic<int> currentStep { 0 };
 };

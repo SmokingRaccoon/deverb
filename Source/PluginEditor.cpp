@@ -243,6 +243,13 @@ DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
     fwdModeBtn.onClick = [setMode] { setMode(false); };
     revModeBtn.onClick = [setMode] { setMode(true); };
 
+    // --- PWR por coluna (mostra o alvo FWD|REV; sem cliques, sem tails) ---
+    for (auto* b : { &gatePwrBtn, &delayPwrBtn, &verbPwrBtn, &granPwrBtn })
+    {
+        b->setTooltip("Liga/desliga o módulo (limpa buffers)");
+        addAndMakeVisible(b);
+    }
+
     // --- Faixa REV na 2ª linha da topbar: engine + links + trims + routing ---
     revModeBox.addItemList({ "Off", "Loop", "Throw" }, 1);
     revModeBox.setTooltip("Motor REV: desligado / loop / throw único");
@@ -348,7 +355,7 @@ void DeVerbEditor::bindGateColumn()
     // ainda vivo, escreveria o valor no parâmetro errado (cross-talk FWD|REV).
     rateAttach.reset(); stepsAttach.reset(); trigAttach.reset();
     smoothAttach.reset(); depthAttach.reset(); gmixAttach.reset();
-    panAttach.reset(); thrAttach.reset();
+    panAttach.reset(); thrAttach.reset(); gatePwrAttach.reset();
     juce::String p = showRev ? "rev_" : "fwd_";
     rateAttach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         proc.apvts, p + "gate_rate", rateBox);
@@ -366,6 +373,8 @@ void DeVerbEditor::bindGateColumn()
         proc.apvts, p + "gate_pan", panSlider);
     thrAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         proc.apvts, p + "gate_env_thr", thrSlider);
+    gatePwrAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+        proc.apvts, p + "gate_on", gatePwrBtn);
 }
 
 void DeVerbEditor::bindDelayColumn()
@@ -374,6 +383,7 @@ void DeVerbEditor::bindDelayColumn()
     noteAttach.reset(); freezeAttach.reset();
     delayAlgoAttach.reset(); driveAttach.reset(); wowRateAttach.reset();
     wowDepthAttach.reset(); spreadAttach.reset();
+    delayPwrAttach.reset();
     juce::String p = showRev ? "rev_" : "fwd_";
     timeAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         proc.apvts, p + "delay_time", timeSlider);
@@ -389,6 +399,8 @@ void DeVerbEditor::bindDelayColumn()
         proc.apvts, p + "delay_freeze", freezeButton);
     delayAlgoAttach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         proc.apvts, p + "delay_algo", delayAlgoBox);
+    delayPwrAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+        proc.apvts, p + "delay_on", delayPwrBtn);
     driveAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         proc.apvts, p + "delay_drive", driveSlider);
     wowRateAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
@@ -404,6 +416,7 @@ void DeVerbEditor::bindVerbColumn()
     algoAttach.reset(); preNoteAttach.reset(); verbFreezeAttach.reset();
     sizeAttach.reset(); decayAttach.reset(); dampVAttach.reset(); widthAttach.reset();
     predelayAttach.reset(); locutAttach.reset(); hicutAttach.reset(); vmixAttach.reset();
+    verbPwrAttach.reset();
     juce::String p = showRev ? "rev_" : "fwd_";
     algoAttach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         proc.apvts, p + "verb_algo", algoBox);
@@ -427,6 +440,8 @@ void DeVerbEditor::bindVerbColumn()
         proc.apvts, p + "verb_hicut", hicutSlider);
     vmixAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         proc.apvts, p + "verb_mix", vmixSlider);
+    verbPwrAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+        proc.apvts, p + "verb_on", verbPwrBtn);
 }
 
 void DeVerbEditor::bindGranColumn()
@@ -435,7 +450,7 @@ void DeVerbEditor::bindGranColumn()
     grLenAttach.reset(); grTimeNoteAttach.reset(); grInterruptAttach.reset();
     chanceAttach.reset(); thrGAttach.reset(); repeatsAttach.reset(); decayGAttach.reset();
     timeMsAttach.reset(); pitchAttach.reset(); fluxAttach.reset(); xfadeAttach.reset();
-    granMixAttach.reset();
+    granMixAttach.reset(); granPwrAttach.reset();
     juce::String p = showRev ? "rev_gr_" : "gr_";
     grModeAttach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         proc.apvts, p + "mode", grModeBox);
@@ -467,6 +482,8 @@ void DeVerbEditor::bindGranColumn()
         proc.apvts, p + "xfade", xfadeSlider);
     granMixAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         proc.apvts, p + "mix", granMixSlider);
+    granPwrAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+        proc.apvts, p + "on", granPwrBtn);
 }
 
 DeVerbEditor::~DeVerbEditor()
@@ -614,6 +631,12 @@ void DeVerbEditor::resized()
     // Segmentado FWD|REV (modo global de edição).
     fwdModeBtn.setBounds(880, 7, 90, 22);
     revModeBtn.setBounds(972, 7, 90, 22);
+
+    // PWR por coluna (header direita; segue o alvo FWD|REV).
+    gatePwrBtn.setBounds(444, kColY + 2, 48, 20);
+    delayPwrBtn.setBounds(684, kColY + 2, 48, 20);
+    verbPwrBtn.setBounds(948, kColY + 2, 48, 20);
+    granPwrBtn.setBounds(1220, kColY + 2, 48, 20);
 
     int y0 = kColY + kHeadH; // 132
 

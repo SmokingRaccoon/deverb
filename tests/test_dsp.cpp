@@ -11,6 +11,7 @@
 #include "../Source/dsp/Granular.h"
 #include "../Source/dsp/ReverseEngine.h"
 #include "../Source/core/RevLinker.h"
+#include "../Source/core/EnableRamp.h"
 #include <vector>
 
 static int failures = 0;
@@ -36,6 +37,7 @@ int mainVerb();
 int mainGranular();
 int mainReverse();
 int mainDelayAlgos();
+int mainBypass();
 
 static float meanAbs(const std::vector<float>& v, int from, int to);
 
@@ -259,10 +261,152 @@ int main()
     failures += mainGranular();
     failures += mainReverse();
     failures += mainDelayAlgos();
+    failures += mainBypass();
 
     if (failures == 0) std::printf("\nALL TESTS PASSED\n");
     else std::printf("\n%d FAILURES\n", failures);
     return failures == 0 ? 0 : 1;
+}
+
+// --- Fase 8: bypass por módulo ---
+
+static void fillDC(juce::AudioBuffer<float>& b, float v = 1.f)
+{
+    for (int ch = 0; ch < b.getNumChannels(); ++ch)
+        for (int i = 0; i < b.getNumSamples(); ++i) b.setSample(ch, i, v);
+}
+
+static bool isPassthrough(juce::AudioBuffer<float>& b, float v = 1.f)
+{
+    for (int ch = 0; ch < b.getNumChannels(); ++ch)
+        for (int i = 0; i < b.getNumSamples(); ++i)
+            if (std::abs(b.getSample(ch, i) - v) > 1e-5f) return false;
+    return true;
+}
+
+int mainBypass()
+{
+    // --- 26. EnableRamp: rampa 5 ms, silent, clear único ---
+    {
+        EnableRamp r;
+        r.prepare(48000.0); // step = 1/240
+        CHECK(! r.silent(), "nasce ligado");
+        CHECK(! r.takeClear(), "sem clear pendente");
+        r.set(false);
+        for (int i = 0; i < 100; ++i) r.next();
+        CHECK(! r.silent(), "a meio da rampa ainda não silent");
+        for (int i = 0; i < 200; ++i) r.next();
+        CHECK(r.silent(), "silent após 5 ms");
+        CHECK(r.takeClear(), "clear dispara uma vez");
+        CHECK(! r.takeClear(), "clear não repete");
+        r.set(true);
+        CHECK(! r.silent(), "religar acorda logo");
+        CHECK(! r.takeClear(), "religar não pede clear");
+    }
+
+    // --- 27. Delay bypass: transparente + sem tail velha ao religar ---
+    {
+        Delay d;
+        d.prepare(48000.0, 512);
+        d.setMix(1.f);
+        d.setFeedback(0.8f);
+        d.setTestDelaySamples(5000);
+        d.setEnabled(false);
+        juce::AudioBuffer<float> blk(2, 512);
+        blk.clear();
+        d.process(blk); // 512 amostras chegam para a rampa de 5 ms (240)
+        CHECK(d.isBypassed(), "delay silent após settle");
+        CHECK(d.takeClear(), "delay pede clear uma vez");
+        CHECK(! d.takeClear(), "delay não repete clear");
+        d.reset(); // o que o processor faz no takeClear
+        fillDC(blk);
+        d.process(blk);
+        CHECK(isPassthrough(blk), "delay bypass = passthrough exato");
+
+        // Tail velha: enche com eco, desliga (settle+clear), religa em zeros.
+        Delay e;
+        e.prepare(48000.0, 512);
+        e.setMix(1.f);
+        e.setFeedback(0.8f);
+        e.setTestDelaySamples(5000);
+        juce::AudioBuffer<float> imp(2, 512);
+        imp.clear();
+        imp.setSample(0, 0, 1.f);
+        e.process(imp); // impulso entra na linha
+        e.setEnabled(false);
+        juce::AudioBuffer<float> z(2, 512);
+        z.clear();
+        e.process(z);
+        CHECK(e.isBypassed(), "delay settle após tail");
+        if (e.takeClear()) e.reset();
+        juce::AudioBuffer<float> z2(2, 512);
+        z2.clear();
+        e.setEnabled(true);
+        e.process(z2); // religa sobre zeros: sem tail velha?
+        float tail = 0.f;
+        for (int i = 0; i < 512; ++i) tail = juce::jmax(tail, std::abs(z2.getSample(0, i)));
+        CHECK(tail < 0.01f, "religar não cospe tail velha (%f)", tail);
+    }
+
+    // --- 28. Gater bypass com pattern fechado ---
+    {
+        Gater g;
+        g.prepare(48000.0);
+        g.setRate(TempoInfo::Note::N16);
+        g.setSteps(16);
+        g.setPattern(0x0000); // tudo fechado: sem bypass calava tudo
+        g.setDepth(1.f);
+        g.setMix(1.f);
+        g.setTrigMode(Gater::TrigMode::Free);
+        g.setInternalBpm(120.0);
+        g.setEnabled(false);
+        TempoInfo t;
+        juce::AudioBuffer<float> blk(2, 512);
+        blk.clear();
+        g.process(blk, t);
+        CHECK(g.isBypassed(), "gater silent após settle");
+        if (g.takeClear()) g.reset();
+        fillDC(blk);
+        g.process(blk, t);
+        CHECK(isPassthrough(blk), "gater bypass = passthrough exato");
+    }
+
+    // --- 29. Reverb + Granular bypass transparentes ---
+    {
+        reverb::Reverb r;
+        r.prepare(48000.0, 512);
+        r.setMix(1.f);
+        r.setT60(3.0);
+        r.setEnabled(false);
+        juce::AudioBuffer<float> blk(2, 512);
+        blk.clear();
+        r.process(blk);
+        CHECK(r.isBypassed(), "verb silent após settle");
+        if (r.takeClear()) r.reset();
+        fillDC(blk);
+        r.process(blk);
+        CHECK(isPassthrough(blk), "verb bypass = passthrough exato");
+
+        Granular gr;
+        gr.prepare(48000.0);
+        gr.setMode(Granular::Mode::BeatRepeat);
+        gr.setTrig(Granular::Trig::Manual);
+        gr.setLenNote(TempoInfo::Note::N16);
+        gr.setMix(1.f);
+        gr.setInterrupt(true); // sem bypass isto calaria o dry!
+        gr.setInternalBpm(120.0);
+        gr.setEnabled(false);
+        TempoInfo t2;
+        blk.clear();
+        gr.process(blk, t2);
+        CHECK(gr.isBypassed(), "gran silent após settle");
+        if (gr.takeClear()) gr.reset();
+        fillDC(blk);
+        gr.process(blk, t2);
+        CHECK(isPassthrough(blk), "gran bypass = passthrough exato");
+    }
+
+    return failures;
 }
 
 // --- Fase 7: algoritmos do delay ---
