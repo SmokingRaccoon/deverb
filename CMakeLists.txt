@@ -43,8 +43,8 @@ juce_add_binary_data(deVerbFonts
   HEADER_NAME DeVerbFonts.h
   NAMESPACE DeVerbFonts
   SOURCES
-    Source/ui/fonts/NimbusSans-Regular.otf
-    Source/ui/fonts/NimbusSans-Bold.otf
+    Source/ui/fonts/NimbusSans-Regular.ttf
+    Source/ui/fonts/NimbusSans-Bold.ttf
 )
 
 target_sources(deVerb PRIVATE

@@ -20,8 +20,12 @@ não editar à mão — fonte-verdade `generate-v4.py`).
 | linha de água | `#8D8A82` |
 
 Acento só em áreas pequenas e planas (nunca único portador de informação).
-Fonte embutida: Nimbus Sans Regular/Bold via BinaryData (`Source/ui/fonts/`,
-`DeVerbFonts`); mono de valores fica no sistema.
+Fonte embutida: Nimbus Sans Regular/Bold **TTF** via BinaryData
+(`Source/ui/fonts/`, `DeVerbFonts`); mono de valores fica no sistema.
+Os TTF foram convertidos das URW Base35 OTF (CFF) com fonttools/cu2qu:
+o `CGFontCreateWithDataProvider` do macOS não carrega CFF a partir de
+memória e o JUCE desreferencia o nulo (segfault no teste Editor do
+pluginval) — com TrueType o caminho é fiável em todas as plataformas.
 
 ## Componentes (`Source/ui/V4*.h`)
 

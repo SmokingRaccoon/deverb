@@ -20,9 +20,9 @@ juce::Typeface::Ptr WaterLnF::getTypefaceForFont(const juce::Font& f)
     // Nimbus Sans embutida (a fonte do render v4); o bold usa o corte Bold.
     // Mono (valores tabulares) continua no sistema (DejaVu Sans Mono).
     static juce::Typeface::Ptr reg = juce::Typeface::createSystemTypefaceFor(
-        DeVerbFonts::NimbusSansRegular_otf, DeVerbFonts::NimbusSansRegular_otfSize);
+        DeVerbFonts::NimbusSansRegular_ttf, DeVerbFonts::NimbusSansRegular_ttfSize);
     static juce::Typeface::Ptr bold = juce::Typeface::createSystemTypefaceFor(
-        DeVerbFonts::NimbusSansBold_otf, DeVerbFonts::NimbusSansBold_otfSize);
+        DeVerbFonts::NimbusSansBold_ttf, DeVerbFonts::NimbusSansBold_ttfSize);
     if (f.isBold())
         return bold != nullptr ? bold : reg;
     return reg;
