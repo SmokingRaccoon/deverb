@@ -111,7 +111,8 @@ jobs:
             # pluginval incorpora o editor via XEmbed e rebenta sem display.
             xvfb-run -a "$PV" --validate "$VST3" --strictness-level 5
           else
-            "$PV" --validate "$VST3" --strictness-level 5
+            # Sob lldb para a stack real ficar no log se o teste Editor estoirar.
+            lldb --batch -o "run" -o "bt all" -o "quit" -- "$PV" --validate "$VST3" --strictness-level 5
           fi
 
       # Em falha no mac: despeja os crash reports (.ips) dos nossos processos
