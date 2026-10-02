@@ -248,6 +248,19 @@ DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
 
 DeVerbEditor::~DeVerbEditor()
 {
+    // Attachments primeiro: os Sliders morrem no owned_/painéis e um
+    // SliderAttachment vivo a seguir chamava removeListener() em morto
+    // (EXC_BAD_ACCESS no teste Editor do pluginval/mac).
+    inputAtt.reset();
+    morphAtt.reset();
+    trimDelayAtt.reset();
+    trimDecayAtt.reset();
+    masterAtt.reset();
+    fwdMixAtt.reset();
+    revRateAtt.reset();
+    revLfoAtt.reset();
+    revDuckAtt.reset();
+    revMixAtt.reset();
     setLookAndFeel(nullptr);
 }
 

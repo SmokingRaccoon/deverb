@@ -17,7 +17,10 @@ class V4ModulePanel : public juce::Component
 {
 public:
     V4ModulePanel(DeVerbProcessor& proc, const juce::String& engine, const juce::String& mod);
-    ~V4ModulePanel() override = default;
+    // Os SliderAttachment têm de morrer ANTES dos Sliders (owned_ apaga os
+    // componentes primeiro); senão removeListener() corre num slider morto
+    // (EXC_BAD_ACCESS no mac, heap luck no Linux).
+    ~V4ModulePanel() override;
 
     void resized() override {} // filhos com bounds absolutos locais
     void updateLinkState();    // tether + agulhas (chamado no Timer)

@@ -17,6 +17,12 @@ juce::Colour accFor(const juce::String& m)
 juce::StringArray notesArr() { return TempoInfo::noteNames(); }
 }
 
+V4ModulePanel::~V4ModulePanel()
+{
+    for (auto& e : dials_)
+        e.att.reset();
+}
+
 V4ModulePanel::V4ModulePanel(DeVerbProcessor& proc, const juce::String& engine, const juce::String& mod)
     : engine_(engine), mod_(mod), proc_(proc)
 {
