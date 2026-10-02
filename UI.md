@@ -1,72 +1,59 @@
-# deVerb UI — spec do tema e do layout (v2)
+# deVerb UI — spec do tema e do layout (v4 "Espelho de Agua")
 
-Janela fixa **1280×624**. Uma página horizontal, sem tabs nem scroll.
-Tema escuro contrastado, um acento por módulo.
+Janela fixa **1280×624**. FWD em cima (papel), REV em baixo (tinta),
+meridiano com a relação (LINK/MORPH/TRIM). Sem tabs nem scroll.
+Hand-off completo em `assets/mockup/DESIGN-V4.md` (conceito, tokens,
+componentes, tether) e `assets/mockup/LAYOUT-V4.md` (geometria gerada,
+não editar à mão — fonte-verdade `generate-v4.py`).
 
-## Cores (`ui/AbletonLnF.h`)
+## Cores (`ui/WaterLnF.h`)
 
 | Uso | Cor |
 |-----|-----|
-| fundo | `#0e0e0e` |
-| MOTOR acento/panel | `#b5b5b5` / `#151515` |
-| GATE acento/panel | `#fed134` / `#1a1810` |
-| DELAY acento/panel | `#58c472` / `#101a12` |
-| VERB acento/panel | `#5aa9e6` / `#10141c` |
-| GRAN acento/panel | `#ff9034` / `#1c1410` |
-| REV strip acento/fundo | `#b48ce8` / `#14141a` |
-| texto / dim / faint | `#d4d4d4` / `#8f8f8f` / `#5c5c5c` |
-| borda / track | `#2e2e2e` / `#383838` |
+| papel / papel-2 / papel-3 | `#ECE9E2` / `#E3DFD6` / `#D6D1C5` |
+| tinta / tinta-2 / tinta-3 | `#16171A` / `#1F2125` / `#2B2D32` |
+| etiquetas papel / tinta | `#55544F` / `#9A9892` (≥4.5:1) |
+| GATE acento | `#EC563A` (texto ON `#16171A`) |
+| DELAY acento | `#2E9D6B` (texto ON `#16171A`) |
+| VERB acento | `#3558C8` (texto ON `#ECE9E2`) |
+| GRAN acento | `#F0B323` (texto ON `#16171A`) |
+| linha de água | `#8D8A82` |
 
-Knobs herdam o acento do módulo via
-`setColour (rotarySliderFillColourId, …)`; steps/freeze/manual/THROW usam o
-amarelo; toggles de link e FWD|REV usam o roxo (`buttonOnColourId` por botão).
-Headers: nome em cinzento bold 11px + barra de acento 44×3px.
-Toggle desligado por `setEnabled(false)` (steps 9–16 em modo 8) se vê
-esbatido — o LnF respeita `isEnabled`.
+Acento só em áreas pequenas e planas (nunca único portador de informação).
+Fonte embutida: Nimbus Sans Regular/Bold via BinaryData (`Source/ui/fonts/`,
+`DeVerbFonts`); mono de valores fica no sistema.
 
-## Sistema de knobs (3 tamanhos, diâmetros consistentes)
+## Componentes (`Source/ui/V4*.h`)
 
-| Classe | Célula | Diâmetro rotary | Uso |
-|--------|--------|-----------------|-----|
-| BIG | 88–100 × 110 | ~72–80 | MORPH, MASTER, knobs do gate |
-| STD | 59–76 × 90 | ~52–60 | todas as filas de módulo |
-| MINI | 52–56 × 58 | ~28–34 | faixa REV (rate/lfo/duck/trims), extras do delay |
-
-Nomes pintados em faixa de 14px/10px por baixo de cada knob; values em
-textbox por baixo do rotary (duplo clique = entrada numérica). Combos 11px,
-toggles com texto centrado. Grelha base 8px; labels de secção em dim 11px.
+| HTML/mockup | JUCE | Notas |
+|---|---|---|
+| `.dial.m` | `V4Dial` + `WaterLnF::drawRotarySlider` | 21 ticks 270° desde −135°, disco ø48; REV com link mostra 2 agulhas (fantasma = herdado `FWD×trim`, sólida = próprio, ponto = efetivo `lerp` via `RevLinker`) |
+| `.dial.mer/.xl` | `V4Dial("mer"/"xl")` | disco cortado pela linha de água (2 passes + `difference`), M 48 / XL 76; MORPH é o herói |
+| `.seg` | `V4Seg` | opções todas visíveis (≤6) via `ParameterAttachment`; REV com link = tether (tracejado, valor FWD, clique abre UNLINK) |
+| `.stepper` | `V4Stepper` | prev/valor/next + roda; notas, patterns (bits→fábrica), `chain_order`, preset global (role, sem param) |
+| `.numbox` | `V4Num` | BPM arrastável + roda + duplo clique; só conta sem host (`HOST`/`INT` ao lado) |
+| `.key` | `V4Key` | PWR (seta+lâmpada), LINK (anéis), THROW (momentâneo), RANDOM |
+| `.tile` | `V4Tile` | pedra Bauhaus objeto+reflexo, seleciona módulo; PWR/LINK são `V4Key`s sobre a pedra |
+| `.viz.*` | `V4Viz` | scope (FIFO lock-free), capture-window (atomics `revCapBeatsUi/revReadPosUi`), taps/decay/shards de params, IR reservado |
 
 ## Mapa da janela
 
-- **Topbar linha 1** (36px): título, BPM, GATE passo/total, preset global,
-  segmentado **FWD|REV** (modo global de edição), LED GRAB|IDLE.
-- **Topbar linha 2** (64px): faixa REV — mode/source/capture, rate/lfo/duck,
-  THROW, links ALL/GATE/DLY/VRB/GRN, trims, order, xfade.
-- **Colunas**: MOTOR·PERFORM (macros) / GATE·TRANCE (régua+steps+combos+knobs) /
-  DELAY·ECHO (knobs+algo+minis+nota+readout+freeze) / VERB·SPACE (knobs+combos+
-  readout+freeze) / GRAN·GLITCH (combos+knobs+interrupt).
-- Readouts calculados: `375 ms - 1/8D` (delay), `T60 2.5 s` (verb).
-- Ar livre no fundo de DELAY/VERB: reservado (algos Tape+ e loader de IRs).
+- **Cabeçalho 44**: título, preset stepper, RANDOM, BPM numbox, `HOST`/`INT`.
+- **Banda FWD 238** (papel): barra lateral (engine + scope + `FWD MIX`) + área de módulo 896×198.
+- **Meridiano 104** (linha y=334): `INPUT → 4 pedras (cadeia = chain_order) → MORPH+ALL → THROW → T-DLY/T-DEC → X-MODE/ORDER → MASTER`.
+- **Banda REV 238** (tinta): espelho do FWD (translação, nunca texto invertido).
+- 8 `V4ModulePanel` (4 módulos × FWD/REV), attachments criados **uma vez** no ctor; `selectedModule` em `apvts.state/v4ui/selMod` (fora dos 122 IDs); visibilidade + `ComponentAnimator` 180ms (respeita reduced-motion).
 
 ## Regras para futuros widgets (ler antes de mexer)
 
-1. Novos knobs entram numa das 3 classes (nunca tamanhos avulso).
-2. Attachments criam-se **no ctor**; rebinds fazem `.reset()` primeiro —
-   o initial update do novo attachment notifica o slider e o velho, ainda
-   vivo, escreveria no parâmetro errado (cross-talk FWD|REV, apanhado pelo
-   `test_ui`). Ver `bind*Column()`.
-3. `resized()` só posiciona — nunca `addItemList` nem cria attachments
-   (bug histórico: items duplicados por re-resize, apanhado pelo `test_ui`).
-4. IDs de parâmetros congelados no v1; verificar dupes com o gerador da
-   tabela do README (grep conta ocorrências).
-5. ASCII no texto pintado (o `·` U+00B7 rendeu `Â·` neste sistema).
+1. Janela e IDs congelados: 1280×624, 122 params (`fwd_*`/`gr_*`, `rev_*`/`rev_gr_*`, 22 globais). Novos widgets mapeiam para params existentes ou são `visual`.
+2. Attachments no ctor, nunca rebind (o cross-talk FWD|REV morreu com `bind*Column()`).
+3. `resized()` só posiciona — sem `addItemList`, sem criar attachments.
+4. Labels curtos nos segs (recalibrado com Nimbus real: `BEAT/SLICE/REV/PITCH/STUT`, `CHANCE/ENV/MANUAL`); texto ≥10px, dial ≥48px, teclas ≥20px, seg/stepper ≥22px.
+5. ASCII no texto pintado.
+6. Validar: `python3 assets/mockup/generate-v4.py` (122 IDs, 0 overlaps), `test_ui` sob `xvfb-run`, `pluginval --strictness-level 10`.
 
 ## Protocolo de sessões heavy-user
 
-- `tests/test_ui.cpp` (correr sob `xvfb-run`): flips FWD>REV>FWD>REV>FWD com
-  tweaks, cross-talk, pattern nos dois alvos, 11 presets, restore com UI
-  aberta, idempotência de resize, coerência DSP.
-- `/tmp/opencode/session{1,2,3}.sh` + `xdotool`: clicks, combos, stepped
-  drags (50px de salto único NÃO regista — usar 10×5px) e setas do teclado;
-  screenshots por passo em `/tmp/opencode/sess*-*.png`; quit limpo e
-  verificação de `~/.config/deVerb.settings` + relaunch.
+- `tests/test_ui.cpp` (sob `xvfb-run`): selMod+ValueTree, tweaks FWD/REV simultâneos sem cross-talk, tether (REV ligado não escreve → UNLINK), steps nos 2 motores, presets, RANDOM, PWR por motor, restore com UI aberta.
+- Screenshots: standalone sob Xvfb + `xwd`/`ffmpeg` (ver `/tmp/opencode/v4-*.png`); `pluginval` 1.0.4 strict 10 = SUCCESS.

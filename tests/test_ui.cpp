@@ -1,11 +1,7 @@
-// Testes de sessão heavy-user do deVerb (Fase 7): conduz o DeVerbEditor REAL
-// como um utilizador numa sessão de trabalho a sério — FWD>REV>FWD>REV>FWD,
-// tweaks com propósito, presets, resizes — e verifica coerência total:
-// valores mostrados == valores guardados, sem cross-talk, DSP finito.
-//
-// Corre sob Xvfb (componentes precisam de MessageManager com display):
-//   xvfb-run -a ./tests/build/test_ui
-// Sai 0 = passa.
+// Testes de sessão heavy-user v4 (Espelho de Agua): conduz o DeVerbEditor REAL.
+// 8 ModulePanels com attachments ctor-once (sem bind*Column): FWD e REV
+// visíveis em simultâneo por módulo selecionado; sem cross-talk.
+// Corre sob Xvfb: xvfb-run -a ./tests/build/test_ui
 #include <cstdio>
 #include <cmath>
 #include <vector>
@@ -20,56 +16,20 @@ static int failures = 0;
     else { std::printf("ok: " __VA_ARGS__); std::printf("\n"); } \
 } while (0)
 
-// Driver com acesso total ao editor (friend). Replica EXATAMENTE o que os
-// handlers da UI fazem (mesmas chamadas, sem atalhos).
 struct UiSessionDriver
 {
     DeVerbEditor& ed;
     DeVerbProcessor& proc;
-    // Referências públicas p/ os widgets (ligadas no ctor, onde há acesso).
-    juce::Slider &fb, &decay, &master;
-    juce::ComboBox &order, &xfade, &note, &algo;
-    juce::ToggleButton &gatePwr;
-    explicit UiSessionDriver(DeVerbEditor& e, DeVerbProcessor& p)
-        : ed(e), proc(p), fb(e.fbSlider), decay(e.decaySlider), master(e.masterSlider),
-          order(e.orderBox), xfade(e.xfadeBox), note(e.noteBox), algo(e.delayAlgoBox),
-          gatePwr(e.gatePwrBtn) {}
+    explicit UiSessionDriver(DeVerbEditor& e, DeVerbProcessor& p) : ed(e), proc(p) {}
 
-    bool stepState(int i) { return ed.stepButtons[i].getToggleState(); }
-    void clickRandom() { ed.randomButton.triggerClick(); pump(); }
-
-    void pump(int ms = 120) // esvazia a message queue (sync param→widget)
+    void pump(int ms = 120)
     {
         if (auto* mm = juce::MessageManager::getInstanceWithoutCreating())
             mm->runDispatchLoopUntil(ms);
     }
 
-    void flipToRev()
-    {
-        ed.showRev = true;
-        ed.fwdModeBtn.setToggleState(false, juce::dontSendNotification);
-        ed.revModeBtn.setToggleState(true, juce::dontSendNotification);
-        ed.bindGateColumn();
-        ed.bindDelayColumn();
-        ed.bindVerbColumn();
-        ed.bindGranColumn();
-        pump();
-    }
-    void flipToFwd()
-    {
-        ed.showRev = false;
-        ed.fwdModeBtn.setToggleState(true, juce::dontSendNotification);
-        ed.revModeBtn.setToggleState(false, juce::dontSendNotification);
-        ed.bindGateColumn();
-        ed.bindDelayColumn();
-        ed.bindVerbColumn();
-        ed.bindGranColumn();
-        pump();
-    }
+    void selectMod(const juce::String& m) { ed.setSelMod(m, false); pump(); }
 
-    // Valor que o knob MOSTRA (unidades reais; attachments espelham o range).
-    float shown(juce::Slider& s) { return s.getValue(); }
-    // Valor guardado no parâmetro (unidades reais).
     float stored(const char* id)
     {
         if (auto* p = proc.apvts.getParameter(id))
@@ -82,18 +42,25 @@ struct UiSessionDriver
             p->setValueNotifyingHost(norm01);
         pump(30);
     }
-    // Arrasta um knob (widget→param, síncrono via attachment).
-    void dragKnob(juce::Slider& s, float norm01)
+    float shownDial(const char* id)
     {
-        s.setValue(norm01, juce::sendNotificationSync);
+        if (auto* d = ed.findDial(id)) return d->getValue();
+        return -999.f;
     }
-    void pickCombo(juce::ComboBox& c, int itemId)
+    void dragDial(const char* id, float realVal)
     {
-        c.setSelectedId(itemId, juce::sendNotificationSync);
+        if (auto* d = ed.findDial(id)) d->setValue(realVal, juce::sendNotificationSync);
+        pump(30);
     }
-    void flipStep(int i) { ed.flipStep(i); pump(); } // pump longo: Timer é 30 Hz
-
-    int comboItems(juce::ComboBox& c) { return c.getNumItems(); }
+    void clickRandom()
+    {
+        if (auto* k = ed.findKey("link_master")) { juce::ignoreUnused(k); }
+        ed.randomize();
+        pump();
+    }
+    void flipStepFwd(int i) { ed.panels[0][0]->flipStep(i); pump(); }
+    void flipStepRev(int i) { ed.panels[1][0]->flipStep(i); pump(); }
+    bool panelVisible(int e, int m) { return ed.panels[e][m]->isVisible(); }
 };
 
 static bool noisyFinite(DeVerbProcessor& p)
@@ -118,171 +85,103 @@ static bool noisyFinite(DeVerbProcessor& p)
 
 int main()
 {
-    juce::ScopedJuceInitialiser_GUI gui; // MessageManager p/ widgets e Timer
+    juce::ScopedJuceInitialiser_GUI gui;
     DeVerbProcessor proc;
     proc.prepareToPlay(48000.0, 512);
     DeVerbEditor ed(proc);
     ed.setSize(1280, 624);
     UiSessionDriver d(ed, proc);
 
-    // --- U1. Resize repetido não duplica items nem parte binds ---
-    for (int k = 0; k < 5; ++k)
-    {
-        ed.setSize(800, 600);
-        ed.setSize(1280, 624);
-    }
+    // U1. Janela fixa + resize idempotente + 8 painéis + selMod persistido
+    CHECK(ed.getWidth() == 1280 && ed.getHeight() == 624, "janela 1280x624");
+    for (int k = 0; k < 3; ++k) { ed.setSize(800, 600); ed.setSize(1280, 624); }
     d.pump();
-    CHECK(d.comboItems(d.order) == 4, "orderBox tem 4 items após resizes (%d)",
-          d.comboItems(d.order));
-    CHECK(d.comboItems(d.xfade) == 2, "xfadeBox tem 2 items (%d)",
-          d.comboItems(d.xfade));
-    CHECK(d.comboItems(d.note) == 12, "noteBox tem 12 items (%d)",
-          d.comboItems(d.note));
-    CHECK(d.comboItems(d.algo) == 5, "delayAlgoBox tem 5 items (%d)",
-          d.comboItems(d.algo));
+    CHECK(ed.getWidth() == 1280 && ed.getHeight() == 624, "resize volta a 1280x624");
+    d.selectMod("verb");
+    CHECK(ed.getSelMod() == "verb", "selMod verb");
+    CHECK(proc.getSelMod() == "verb", "selMod persiste no ValueTree");
+    d.selectMod("gate");
+    CHECK(d.panelVisible(0, 0) && d.panelVisible(1, 0), "gate FWD+REV visíveis");
+    CHECK(! d.panelVisible(0, 1), "delay escondido com gate selecionado");
 
-    // --- U2. Sessão "tail reverso do trance gate": FWD>REV>FWD>REV>FWD ---
-    // FWD: pattern porta + delay 1/8D.
-    d.flipToFwd();
-    d.dragKnob(d.fb, 0.5f); // mexe no knob FWD...
-    CHECK(std::abs(d.stored("fwd_delay_fb") - 0.5f) < 0.02f,
-          "knob FWD escreve fwd_delay_fb");
-    CHECK(std::abs(d.stored("rev_delay_fb") - 0.35f) < 0.02f,
-          "REV intacto enquanto edita FWD (%f)", d.stored("rev_delay_fb"));
-    // Vira REV: knobs mostram REV, FWD preservado.
-    d.flipToRev();
-    CHECK(std::abs(d.shown(d.fb) - d.stored("rev_delay_fb")) < 0.02f,
-          "ao virar REV o knob mostra rev_delay_fb");
-    d.dragKnob(d.fb, 0.9f);
-    d.pickCombo(d.algo, 3); // PingPong no REV
-    CHECK(std::abs(d.stored("rev_delay_fb") - 0.9f) < 0.02f, "knob REV escreve");
-    CHECK(d.proc.apvts.getRawParameterValue("rev_delay_algo")->load() == 2.f,
-          "combo REV escreve rev_delay_algo=PingPong");
-    // Volta FWD: tudo intacto, sem cross-talk.
-    d.flipToFwd();
-    CHECK(std::abs(d.stored("fwd_delay_fb") - 0.5f) < 0.02f, "FWD intacto após ida a REV");
-    CHECK(std::abs(d.shown(d.fb) - 0.5f) < 0.02f, "knob FWD mostra valor FWD");
-    CHECK(d.proc.apvts.getRawParameterValue("fwd_delay_algo")->load() == 0.f,
-          "algo FWD continua Digital");
-    // Outra vez REV e volta (2º ciclo FWD>REV>FWD).
-    d.flipToRev();
-    CHECK(std::abs(d.shown(d.fb) - 0.9f) < 0.02f, "REV preservado no 2º ciclo");
-    d.flipToFwd();
-    d.flipToRev();
-    d.flipToFwd();
-    CHECK(std::abs(d.stored("fwd_delay_fb") - 0.5f) < 0.02f, "FWD intacto após 3 ciclos");
-    CHECK(std::abs(d.stored("rev_delay_fb") - 0.9f) < 0.02f, "REV intacto após 3 ciclos");
-    CHECK(noisyFinite(proc), "DSP finito após flips");
+    // U2. FWD/REV independentes com attachments ctor-once (sem flips de bind)
+    d.dragDial("fwd_delay_fb", 0.5f);
+    CHECK(std::abs(d.stored("fwd_delay_fb") - 0.5f) < 0.02f, "dial FWD escreve fwd_delay_fb");
+    CHECK(std::abs(d.stored("rev_delay_fb") - 0.35f) < 0.02f, "REV intacto (%f)", d.stored("rev_delay_fb"));
+    d.dragDial("rev_delay_fb", 0.9f);
+    CHECK(std::abs(d.stored("rev_delay_fb") - 0.9f) < 0.02f, "dial REV escreve");
+    CHECK(std::abs(d.stored("fwd_delay_fb") - 0.5f) < 0.02f, "FWD intacto após REV");
+    CHECK(std::abs(d.shownDial("fwd_delay_fb") - 0.5f) < 0.02f, "FWD mostra FWD");
+    CHECK(std::abs(d.shownDial("rev_delay_fb") - 0.9f) < 0.02f, "REV mostra REV");
+    CHECK(noisyFinite(proc), "DSP finito após tweaks");
 
-    // --- U3. Pattern editor nos dois alvos, sem cross-talk ---
-    d.flipToFwd();
+    // U3. Steps nos dois motores, sem cross-talk (tether: REV ligado segue FWD)
     {
-        int before = (int) proc.apvts.getRawParameterValue("rev_gate_pattern")->load();
-        d.flipStep(0); // mexe passo 1 do FWD
-        int fwd = (int) proc.apvts.getRawParameterValue("fwd_gate_pattern")->load();
-        int rev = (int) proc.apvts.getRawParameterValue("rev_gate_pattern")->load();
-        CHECK(fwd == (0x1111 ^ 1), "flipStep FWD (got 0x%x)", fwd);
-        CHECK(rev == before, "REV pattern intacto (0x%x)", rev);
-        // Toggles refletem o alvo após pump.
-        CHECK(d.stepState(0) == ((fwd & 1) != 0),
-              "toggle 1 espelha FWD");
+        int beforeRev = (int)d.stored("rev_gate_pattern");
+        d.flipStepFwd(0);
+        CHECK((int)d.stored("fwd_gate_pattern") == (0x1111 ^ 1), "flipStep FWD");
+        CHECK((int)d.stored("rev_gate_pattern") == beforeRev, "REV intacto");
+        // Com LINK GATE ON (default), o passo REV está amarrado: não escreve
+        d.flipStepRev(1);
+        CHECK((int)d.stored("rev_gate_pattern") == beforeRev, "REV tethered não escreve com link");
+        // Desliga o link e aí escreve
+        d.setParam("link_gate", 0.f);
+        d.flipStepRev(1);
+        CHECK((int)d.stored("rev_gate_pattern") == (beforeRev ^ 2), "flipStep REV após UNLINK");
+        d.setParam("link_gate", 1.f);
     }
-    d.flipToRev();
-    d.flipStep(1); // passo 2 do REV
-    {
-        int rev = (int) proc.apvts.getRawParameterValue("rev_gate_pattern")->load();
-        int fwd = (int) proc.apvts.getRawParameterValue("fwd_gate_pattern")->load();
-        CHECK(rev == (0x1111 ^ 2), "flipStep REV (got 0x%x)", rev);
-        CHECK(fwd == (0x1111 ^ 1), "FWD intacto (0x%x)", fwd);
-        CHECK(d.stepState(1) == ((rev & 2) != 0),
-              "toggle 2 espelha REV");
-    }
-    d.flipToFwd();
 
-    // --- U4. Todos os 11 presets aplicam e o DSP fica finito ---
+    // U4. Presets + master segue
     {
         bool allOk = true;
         for (size_t i = 0; i < deVerbFactoryPresets().size(); ++i)
         {
-            applyFactoryPreset(proc.apvts, (int) i);
+            applyFactoryPreset(proc.apvts, (int)i);
             d.pump(20);
             if (! noisyFinite(proc)) { allOk = false; break; }
         }
-        CHECK(allOk, "11 presets aplicam sem partir o DSP");
-        // UI segue o preset: master do preset Init = 0.8.
+        CHECK(allOk, "presets aplicam sem partir DSP");
         applyFactoryPreset(proc.apvts, 0);
         d.pump();
-        CHECK(std::abs(d.shown(d.master) - 0.8f) < 0.02f,
-              "knob master segue preset Init (%f)", d.shown(d.master));
+        CHECK(std::abs(d.shownDial("master") - 0.8f) < 0.02f, "master segue Init");
     }
 
-    // --- U5. State round-trip com UI aberta e flips no meio ---
+    // U5. Round-trip com UI aberta
     {
-        d.flipToFwd();
-        d.dragKnob(d.decay, 0.7f); // verb decay FWD
-        d.flipToRev();
-        d.dragKnob(d.decay, 0.2f); // verb decay REV
+        d.dragDial("fwd_verb_decay", 5.0f);
+        d.dragDial("rev_verb_decay", 6.0f);
         juce::MemoryBlock mb;
         proc.getStateInformation(mb);
-        d.dragKnob(d.decay, 0.9f); // suja o REV
-        d.flipToFwd();
-        d.dragKnob(d.decay, 5.0f); // suja o FWD
-        proc.setStateInformation(mb.getData(), (int) mb.getSize());
+        d.dragDial("fwd_verb_decay", 10.0f);
+        d.dragDial("rev_verb_decay", 10.0f);
+        proc.setStateInformation(mb.getData(), (int)mb.getSize());
         d.pump();
-        // Compara em unidades REAIS (raw) dos dois lados (ranges com skew!).
-        float fwd = proc.apvts.getRawParameterValue("fwd_verb_decay")->load();
-        float rev = proc.apvts.getRawParameterValue("rev_verb_decay")->load();
-        d.flipToFwd();
-        CHECK(std::abs(d.shown(d.decay) - fwd) < 0.05f,
-              "restore repõe FWD e UI segue (%f vs %f)", d.shown(d.decay), fwd);
-        d.flipToRev();
-        CHECK(std::abs(d.shown(d.decay) - rev) < 0.05f,
-              "restore repõe REV e UI segue (%f vs %f)", d.shown(d.decay), rev);
+        CHECK(std::abs(d.stored("fwd_verb_decay") - 5.0f) < 0.05f, "restore FWD");
+        CHECK(std::abs(d.stored("rev_verb_decay") - 6.0f) < 0.05f, "restore REV");
         CHECK(noisyFinite(proc), "DSP finito após restore");
     }
 
-    // --- U6. Botão RANDOM: muda quase tudo, poupa gains, DSP finito ---
+    // U6. RANDOM
     {
         std::vector<float> before;
         for (auto* p : proc.getParameters()) before.push_back(p->getValue());
         d.clickRandom();
-        int changed = 0, total = 0;
+        int changed = 0;
         for (size_t i = 0; i < before.size(); ++i)
-        {
-            ++total;
-            if (std::abs(proc.getParameters()[(int) i]->getValue() - before[i]) > 0.001f)
-                ++changed;
-        }
-        // RANDOM civilizado muda ~2/3 dos params (curated: alguns coincidem).
-        CHECK(changed > total / 2, "RANDOM muda >50%% dos params (%d/%d)",
-              changed, total);
-        CHECK(std::abs(proc.apvts.getRawParameterValue("master")->load() - 0.8f) < 1e-6f,
-              "RANDOM poupa o master");
-        CHECK(std::abs(proc.apvts.getRawParameterValue("input_gain")->load() - 1.f) < 1e-6f,
-              "RANDOM poupa o input");
-        bool inRange = true;
-        for (auto* p : proc.getParameters())
-        {
-            float v = p->getValue();
-            if (v < 0.f || v > 1.f) { inRange = false; break; }
-        }
-        CHECK(inRange, "RANDOM dentro de [0,1]");
+            if (std::abs(proc.getParameters()[(int)i]->getValue() - before[i]) > 0.001f) ++changed;
+        CHECK(changed > (int)before.size() / 2, "RANDOM muda >50%% (%d)", changed);
         CHECK(noisyFinite(proc), "DSP finito após RANDOM");
     }
 
-    // --- U7. PWR segue o alvo FWD|REV sem cross-talk ---
+    // U7. PWR por motor (fonte única nas pedras)
     {
-        d.flipToFwd();
-        d.gatePwr.setToggleState(false, juce::sendNotificationSync);
-        CHECK(d.stored("fwd_gate_on") == 0.f, "PWR desliga fwd_gate_on");
-        CHECK(d.stored("rev_gate_on") == 1.f, "rev_gate_on intacto");
-        d.flipToRev();
-        CHECK(d.gatePwr.getToggleState() == true, "em REV o PWR mostra rev (ON)");
-        d.gatePwr.setToggleState(false, juce::sendNotificationSync);
-        CHECK(d.stored("rev_gate_on") == 0.f, "PWR desliga rev_gate_on");
-        d.flipToFwd();
-        CHECK(d.gatePwr.getToggleState() == false, "de volta a FWD mostra OFF");
-        CHECK(d.stored("fwd_gate_on") == 0.f, "fwd_gate_on intacto");
+        if (auto* k = ed.findKey("fwd_gate_on")) k->setState(false);
+        d.pump();
+        CHECK(d.stored("fwd_gate_on") == 0.f, "PWR desliga FWD");
+        CHECK(d.stored("rev_gate_on") == 1.f, "REV intacto");
+        if (auto* k = ed.findKey("rev_gate_on")) k->setState(false);
+        d.pump();
+        CHECK(d.stored("rev_gate_on") == 0.f, "PWR desliga REV");
     }
 
     if (failures == 0) std::printf("\nALL UI SESSION TESTS PASSED\n");

@@ -3,759 +3,475 @@
 #include "core/TempoInfo.h"
 #include "core/FactoryPresets.h"
 #include "dsp/Gater.h"
-#include <iterator>
-
-// UI v2 horizontal 1280×624: topbar (título+preset+monitores / faixa REV) +
-// 5 panels (MOTOR perform / GATE / DELAY / VERB / GRAN) com knobs BIG/STD/MINI.
-// Grelha 8px, labels pintados, acento por módulo. Lógica igual à v1.
 
 namespace {
-constexpr int kW = 1280, kH = 624, kTopH = 100, kPad = 8;
-constexpr int kColY = kTopH + kPad;          // 108
-constexpr int kColBottom = kH - kPad;        // 616
-constexpr int kHeadH = 24;
+constexpr int kW = 1280, kH = 624;
+constexpr int MOD_X = 360, MOD_W = 896;
+constexpr int CY_FWD = 64, CY_REV = 406;
 
-const char* kMotorLabels[5] = { "INPUT", "FWD MIX", "REV MIX", "MORPH", "MASTER" };
-const char* kGateLabels[5]  = { "SMOOTH", "DEPTH", "MIX", "PAN", "THR" };
-const char* kDelayLabels[5] = { "BPM", "TIME", "FB", "DAMP", "MIX" };
-const char* kVerbLabels[8]  = { "SIZE", "DECAY", "DAMP", "WIDTH", "PRE-DLY", "LO-CUT", "HI-CUT", "MIX" };
-const char* kGranLabels[9]  = { "CHANCE", "THR", "REPEATS", "DECAY", "TIME", "PITCH", "FLUX", "XFADE", "MIX" };
-// (Nomes aplicados aos sliders via setName; o LnF desenha-os colados ao knob.
-//  paintKnobLabels foi removido: duas fontes de labels = desalinho garantido.)
-
-// Panels e headers das 5 colunas (x, w, nome, acento, tint).
-struct ColDef { int x, w; const char* name; juce::Colour accent, panel; };
-inline const ColDef* colDefs()
+int modIdx(const juce::String& m)
 {
-    using C = AbletonLnF;
-    static const ColDef defs[5] = {
-        { 8, 184, "MOTOR - PERFORM", C::motorAccent, C::motorPanel },
-        { 200, 296, "GATE - TRANCE", C::gateAccent, C::gatePanel },
-        { 504, 232, "DELAY - ECHO", C::delayAccent, C::delayPanel },
-        { 744, 256, "VERB - SPACE", C::verbAccent, C::verbPanel },
-        { 1008, 264, "GRAN - GLITCH", C::granAccent, C::granPanel },
-    };
-    return defs;
+    if (m == "gate") return 0;
+    if (m == "delay") return 1;
+    if (m == "verb") return 2;
+    return 3;
 }
-} // namespace
+juce::String modAt(int i)
+{
+    if (i == 0) return "gate";
+    if (i == 1) return "delay";
+    if (i == 2) return "verb";
+    return "gran";
+}
+}
+
+int DeVerbEditor::modIndex(const juce::String& m) const { return modIdx(m); }
 
 DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
     : AudioProcessorEditor(p), proc(p)
 {
     setLookAndFeel(&lnf);
-    setSize(kW, kH);
 
-    for (auto* s : { &inputSlider, &fwdMixSlider, &revMixSlider, &morphSlider, &masterSlider,
-                     &bpmSlider, &timeSlider, &fbSlider, &dampSlider, &dmixSlider,
-                     &smoothSlider, &depthSlider, &gmixSlider, &panSlider, &thrSlider,
-                     &sizeSlider, &decaySlider, &dampVSlider, &widthSlider, &predelaySlider,
-                     &locutSlider, &hicutSlider, &vmixSlider,
-                     &chanceSlider, &thrGSlider, &repeatsSlider, &decayGSlider, &timeMsSlider,
-                     &pitchSlider, &fluxSlider, &xfadeSlider, &granMixSlider })
-    {
-        s->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-        s->setTextBoxStyle(juce::Slider::TextBoxBelow, false, 56, 18);
-        addAndMakeVisible(s);
-    }
-    // Acento por módulo nos knobs.
-    for (auto* s : { &inputSlider, &fwdMixSlider, &revMixSlider, &morphSlider, &masterSlider })
-        s->setColour(juce::Slider::rotarySliderFillColourId, AbletonLnF::motorAccent);
-    for (auto* s : { &smoothSlider, &depthSlider, &gmixSlider, &panSlider, &thrSlider })
-        s->setColour(juce::Slider::rotarySliderFillColourId, AbletonLnF::gateAccent);
-    for (auto* s : { &bpmSlider, &timeSlider, &fbSlider, &dampSlider, &dmixSlider })
-        s->setColour(juce::Slider::rotarySliderFillColourId, AbletonLnF::delayAccent);
-    for (auto* s : { &sizeSlider, &decaySlider, &dampVSlider, &widthSlider, &predelaySlider,
-                     &locutSlider, &hicutSlider, &vmixSlider })
-        s->setColour(juce::Slider::rotarySliderFillColourId, AbletonLnF::verbAccent);
-    for (auto* s : { &chanceSlider, &thrGSlider, &repeatsSlider, &decayGSlider, &timeMsSlider,
-                     &pitchSlider, &fluxSlider, &xfadeSlider, &granMixSlider })
-        s->setColour(juce::Slider::rotarySliderFillColourId, AbletonLnF::granAccent);
-    for (auto* s : { &revRateSlider, &revLfoSlider, &revDuckSlider,
-                     &trimDelaySlider, &trimDecaySlider })
-    {
-        s->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-        s->setTextBoxStyle(juce::Slider::TextBoxBelow, false, 48, 16);
-        s->setColour(juce::Slider::rotarySliderFillColourId, AbletonLnF::revAccent);
-        addAndMakeVisible(s);
-    }
+    selMod_ = proc.getSelMod();
+    if (modIdx(selMod_) < 0 || modIdx(selMod_) > 3) selMod_ = "gate";
 
-    inputAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, "input_gain", inputSlider);
-    fwdMixAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, "fwd_mix", fwdMixSlider);
-    revMixAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, "rev_mix", revMixSlider);
-    morphAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, "morph", morphSlider);
-    masterAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, "master", masterSlider);
+    auto* ap = &proc.apvts;
+    auto accGate = WaterLnF::gateA, accDelay = WaterLnF::delayA,
+         accVerb = WaterLnF::verbA, accGran = WaterLnF::granA;
 
-    bpmAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, "tempo_bpm", bpmSlider);
-    // time/fb/damp/dmix/note/freeze vivem em bindDelayColumn() (FWD|REV).
-    noteBox.addItemList(TempoInfo::noteNames(), 1);
-    noteBox.setTooltip("Delay note (Free = ms livres)");
-    addAndMakeVisible(noteBox);
-    delayAlgoBox.addItemList({ "Digital", "Tape", "PingPong", "MultiTap", "Reverse" }, 1);
-    delayAlgoBox.setTooltip("Algoritmo do delay");
-    addAndMakeVisible(delayAlgoBox);
-    for (auto* s : { &driveSlider, &wowRateSlider, &wowDepthSlider, &spreadSlider })
+    // ---- 8 painéis ----
+    const char* mods[4] = { "gate", "delay", "verb", "gran" };
+    for (int m = 0; m < 4; ++m)
     {
-        s->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-        s->setTextBoxStyle(juce::Slider::TextBoxBelow, false, 56, 16);
-        s->setColour(juce::Slider::rotarySliderFillColourId, AbletonLnF::delayAccent);
-        addAndMakeVisible(s);
-    }
-    driveSlider.setTooltip("Saturação tape");
-    wowRateSlider.setTooltip("Wow rate (tape)");
-    wowDepthSlider.setTooltip("Wow depth em ms (tape)");
-    spreadSlider.setTooltip("Cruzamento stereo (pingpong)");
-    freezeButton.setTooltip("Congela o buffer do delay");
-    addAndMakeVisible(freezeButton);
-    bindDelayColumn();
-
-    // --- Gate ---
-    addAndMakeVisible(ruler);
-    for (int i = 0; i < 16; ++i)
-    {
-        stepButtons[i].setButtonText(juce::String(i + 1));
-        stepButtons[i].setClickingTogglesState(true);
-        stepButtons[i].onClick = [this, i] { flipStep(i); };
-        addAndMakeVisible(stepButtons[i]);
-    }
-
-    for (auto& fp : Gater::factoryPatterns)
-        presetBox.addItem(fp.name, (int) (&fp - Gater::factoryPatterns) + 1);
-    presetBox.setTextWhenNothingSelected("Pattern...");
-    presetBox.setTooltip("Pattern de fábrica → escreve no pattern");
-    presetBox.onChange = [this]
-    {
-        int id = presetBox.getSelectedId();
-        if (id >= 1 && id <= (int) std::size(Gater::factoryPatterns))
+        panels[0][m] = std::make_unique<V4ModulePanel>(proc, "fwd", mods[m]);
+        panels[1][m] = std::make_unique<V4ModulePanel>(proc, "rev", mods[m]);
+        for (int e = 0; e < 2; ++e)
         {
-            uint16_t bits = Gater::factoryPatterns[id - 1].bits;
-            if (auto* par = proc.apvts.getParameter(gatePatId()))
-                par->setValueNotifyingHost(par->convertTo0to1((float) bits));
+            panels[e][m]->onTetherClick = [this](const juce::String& mm, juce::Component* a) {
+                showTetherToast(mm, a);
+            };
+            addAndMakeVisible(panels[e][m].get());
         }
+    }
+
+    // ---- Header ----
+    auto* tv = new V4Viz(V4Viz::Title, &proc);
+    tv->setBounds(24, 0, 140, 44);
+    addAndMakeVisible(tv); owned_.add(tv); titleViz = tv;
+
+    juce::StringArray presetNames;
+    for (auto& pr : deVerbFactoryPresets()) presetNames.add(pr.name);
+    auto* ps = new V4Stepper(nullptr, presetNames, {}, {});
+    ps->setBounds(508, 8, 272, 28);
+    ps->onCustomPick = [this](int i) { applyFactoryPreset(proc.apvts, i); };
+    addAndMakeVisible(ps); owned_.add(ps); presetStepper = ps;
+
+    auto* rk = new V4Key(nullptr, "RANDOM", V4Key::Normal, WaterLnF::ink);
+    rk->setBounds(788, 8, 88, 28);
+    rk->onClickExtra = [this](V4Key*) { randomize(); };
+    addAndMakeVisible(rk); owned_.add(rk); randomKey = rk;
+
+    auto* bn = new V4Num(ap->getParameter("tempo_bpm"), "BPM", 120.0);
+    bn->setBounds(1040, 8, 128, 28);
+    addAndMakeVisible(bn); owned_.add(bn); bpmNum = bn;
+
+    auto* bs = new V4Viz(V4Viz::BpmSrc, &proc, {}, "INT");
+    bs->setBounds(1176, 8, 80, 28);
+    addAndMakeVisible(bs); owned_.add(bs); bpmSrcViz = bs;
+
+    // ---- Sidebars ----
+    auto* ef = new V4Viz(V4Viz::EngineFwd, &proc);
+    ef->setBounds(24, 64, 288, 28);
+    addAndMakeVisible(ef); owned_.add(ef); engineFwdViz = ef;
+
+    auto* sc = new V4Viz(V4Viz::Scope, &proc);
+    sc->setBounds(24, 100, 288, 68);
+    addAndMakeVisible(sc); owned_.add(sc); scopeViz = sc;
+
+    fwdMixDial = new V4Dial("FWD MIX", "m", WaterLnF::ink, 1.0);
+    fwdMixDial->setBounds(240, 176, 64, 86);
+    addAndMakeVisible(fwdMixDial); owned_.add(fwdMixDial);
+    fwdMixAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        proc.apvts, "fwd_mix", *fwdMixDial);
+
+    auto* er = new V4Viz(V4Viz::EngineRev, &proc);
+    er->setBounds(24, 406, 112, 28);
+    addAndMakeVisible(er); owned_.add(er); engineRevViz = er;
+
+    revModeSeg = new V4Seg(ap->getParameter("rev_mode"), { "Off", "Loop", "Throw" }, {}, WaterLnF::ink);
+    revModeSeg->setBounds(144, 406, 168, 28);
+    addAndMakeVisible(revModeSeg); owned_.add(revModeSeg);
+
+    revSourceSeg = new V4Seg(ap->getParameter("rev_source"), { "Dry", "PostFWD" }, {}, WaterLnF::ink);
+    revSourceSeg->setBounds(24, 440, 112, 28);
+    addAndMakeVisible(revSourceSeg); owned_.add(revSourceSeg);
+
+    revCaptureSeg = new V4Seg(ap->getParameter("rev_capture"), { "2", "3", "4" }, "BEATS", WaterLnF::ink);
+    revCaptureSeg->setBounds(144, 440, 148, 28);
+    addAndMakeVisible(revCaptureSeg); owned_.add(revCaptureSeg);
+
+    captureViz = new V4Viz(V4Viz::CaptureWin, &proc);
+    captureViz->setBounds(24, 474, 288, 36);
+    addAndMakeVisible(captureViz); owned_.add(captureViz);
+
+    auto mkRev = [&](const char* id, const char* lb, int x, V4Dial*& out,
+                     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>& att)
+    {
+        out = new V4Dial(lb, "m", WaterLnF::ink, 0.0);
+        out->setBounds(x, 518, 64, 86);
+        addAndMakeVisible(out); owned_.add(out);
+        att = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+            proc.apvts, id, *out);
     };
-    addAndMakeVisible(presetBox);
+    mkRev("rev_rate", "RATE", 24, revRateDial, revRateAtt);
+    mkRev("rev_lfo", "LFO", 96, revLfoDial, revLfoAtt);
+    mkRev("rev_duck", "DUCK", 168, revDuckDial, revDuckAtt);
+    mkRev("rev_mix", "REV MIX", 240, revMixDial, revMixAtt);
 
-    rateBox.addItemList(TempoInfo::noteNames(), 1);
-    rateBox.setTooltip("Gate rate");
-    addAndMakeVisible(rateBox);
-    stepsBox.addItemList({ "8", "16" }, 1);
-    stepsBox.setTooltip("Passos do pattern");
-    addAndMakeVisible(stepsBox);
-    trigBox.addItemList({ "Host", "Midi", "Transient", "Free" }, 1);
-    trigBox.setTooltip("Trigger do restart do pattern");
-    addAndMakeVisible(trigBox);
-    // rate/steps/trig/smooth/depth/mix/pan/thr vivem em bindGateColumn().
-
-    bpmReadout.setJustificationType(juce::Justification::centredLeft);
-    addAndMakeVisible(bpmReadout);
-    gateReadout.setJustificationType(juce::Justification::centredLeft);
-    addAndMakeVisible(gateReadout);
-    delayMsReadout.setJustificationType(juce::Justification::centred);
-    addAndMakeVisible(delayMsReadout);
-    verbDecayReadout.setJustificationType(juce::Justification::centred);
-    addAndMakeVisible(verbDecayReadout);
-
-    // --- Fase 6: preset global na topbar (só UI: escreve nos params) ---
-    {
-        int id = 1;
-        for (auto& pr : deVerbFactoryPresets())
-            globalPresetBox.addItem(pr.name, id++);
-    }
-    globalPresetBox.setTextWhenNothingSelected("Preset...");
-    globalPresetBox.setTooltip("Preset de fábrica (escreve nos parâmetros)");
-    globalPresetBox.onChange = [this]
-    {
-        int id = globalPresetBox.getSelectedId();
-        if (id >= 1)
-            applyFactoryPreset(proc.apvts, id - 1);
+    // ---- Meridiano: pedras + PWR/LINK + MORPH/THROW/TRIM/X/ORDER/MASTER ----
+    const struct { const char* mod; int x; juce::Colour acc; } tileDef[4] = {
+        { "gate", 106, accGate }, { "delay", 238, accDelay },
+        { "verb", 370, accVerb }, { "gran", 502, accGran },
     };
-    addAndMakeVisible(globalPresetBox);
-
-    // --- Botão RANDOM: preset civilizado (sempre audível) ---
-    // Gamas musicais em core/FactoryPresets.h (nunca silêncio acidental).
-    // Usa o RNG do sistema (não determinístico); testes usam seeds fixas.
-    randomButton.setTooltip("Gera um preset aleatório (sempre audível)");
-    randomButton.onClick = [this]
+    for (auto& td : tileDef)
     {
-        juce::Random rng;
-        applyRealList(proc.apvts, civilizedRandom(rng));
+        auto* b = new V4Tile(td.mod, td.acc);
+        b->setBounds(td.x, 290, 124, 88);
+        juce::String mm = td.mod;
+        b->onClick = [this, mm] { setSelMod(mm, true); };
+        addAndMakeVisible(b); owned_.add(b);
+        tiles_.push_back({ b, mm });
+    }
+    const char* pwrFwdIds[4] = { "fwd_gate_on", "fwd_delay_on", "fwd_verb_on", "gr_on" };
+    const char* pwrRevIds[4] = { "rev_gate_on", "rev_delay_on", "rev_verb_on", "rev_gr_on" };
+    const char* linkIds[4] = { "link_gate", "link_delay", "link_verb", "link_gran" };
+    for (int i = 0; i < 4; ++i)
+    {
+        int tx = tileDef[i].x;
+        juce::Colour acc = tileDef[i].acc;
+        auto* kf = new V4Key(ap->getParameter(pwrFwdIds[i]), "", V4Key::PwrFwd, acc);
+        kf->setBounds(tx + 8, 294, 40, 20);
+        addAndMakeVisible(kf); owned_.add(kf); pwrFwdKeys[i] = kf;
+        auto* kl = new V4Key(ap->getParameter(linkIds[i]), "", V4Key::Link, acc);
+        kl->setBounds(tx + 8, 324, 40, 20);
+        kl->onTetherClick = [this](V4Key*) {};
+        addAndMakeVisible(kl); owned_.add(kl); linkKeys[i] = kl;
+        auto* kr = new V4Key(ap->getParameter(pwrRevIds[i]), "", V4Key::PwrRev, acc);
+        kr->setBounds(tx + 8, 354, 40, 20);
+        kr->onTetherClick = [this, i](V4Key* k) {
+            juce::String m = modAt(i);
+            showTetherToast(m, k);
+        };
+        addAndMakeVisible(kr); owned_.add(kr); pwrRevKeys[i] = kr;
+    }
+
+    inputDial = new V4Dial("INPUT", "mer", WaterLnF::ink, 1.0);
+    inputDial->setBounds(24, 291, 64, 88);
+    addAndMakeVisible(inputDial); owned_.add(inputDial);
+    inputAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        proc.apvts, "input_gain", *inputDial);
+
+    morphDial = new V4Dial("MORPH", "xl", WaterLnF::gateA, 0.0);
+    morphDial->setBounds(644, 290, 88, 88);
+    addAndMakeVisible(morphDial); owned_.add(morphDial);
+    morphAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        proc.apvts, "morph", *morphDial);
+
+    morphReadViz = new V4Viz(V4Viz::MorphRead, &proc, {}, "35%");
+    morphReadViz->setBounds(740, 296, 56, 34);
+    addAndMakeVisible(morphReadViz); owned_.add(morphReadViz);
+
+    linkMasterKey = new V4Key(ap->getParameter("link_master"), "ALL", V4Key::LinkAll, WaterLnF::ink);
+    linkMasterKey->setBounds(740, 342, 52, 20);
+    addAndMakeVisible(linkMasterKey); owned_.add(linkMasterKey);
+
+    throwKey = new V4Key(ap->getParameter("rev_throw"), "THROW", V4Key::Throw, WaterLnF::ink);
+    throwKey->setBounds(814, 314, 72, 40);
+    throwKey->onClickExtra = [this](V4Key* k) {
+        if (ripples) ripples->fire((float)(k->getX() + k->getWidth()/2));
     };
-    addAndMakeVisible(randomButton);
+    addAndMakeVisible(throwKey); owned_.add(throwKey);
 
-    // --- Reverb ---
-    algoBox.addItemList({ "Room", "Hall", "Plate", "Shimmer" }, 1);
-    algoBox.setTooltip("Algoritmo de reverb");
-    addAndMakeVisible(algoBox);
-    preNoteBox.addItemList(TempoInfo::noteNames(), 1);
-    preNoteBox.setTooltip("Pre-delay em nota (Free = ms)");
-    addAndMakeVisible(preNoteBox);
-    verbFreezeButton.setTooltip("Congela a cauda do reverb");
-    addAndMakeVisible(verbFreezeButton);
-    bindVerbColumn(); // algo/prenote/freeze + 8 sliders (FWD|REV).
+    trimDelayDial = new V4Dial("T-DLY", "mer", WaterLnF::ink, 1.0);
+    trimDelayDial->setBounds(904, 291, 64, 88);
+    addAndMakeVisible(trimDelayDial); owned_.add(trimDelayDial);
+    trimDelayAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        proc.apvts, "trim_delay", *trimDelayDial);
 
-    // --- Granular ---
-    grModeBox.addItemList({ "Off", "BeatRepeat", "Slice", "Reverse", "Pitch", "Stutter" }, 1);
-    grModeBox.setTooltip("Modo do granular");
-    addAndMakeVisible(grModeBox);
-    grTrigBox.addItemList({ "Chance", "Envelope", "Manual" }, 1);
-    grTrigBox.setTooltip("Trigger do grab");
-    addAndMakeVisible(grTrigBox);
-    grManualButton.setTooltip("Disparo manual (flanco)");
-    addAndMakeVisible(grManualButton);
-    grLenBox.addItemList(TempoInfo::noteNames(), 1);
-    grLenBox.setTooltip("Tamanho do fragmento");
-    addAndMakeVisible(grLenBox);
-    grTimeNoteBox.addItemList(TempoInfo::noteNames(), 1);
-    grTimeNoteBox.setTooltip("Duração em nota (Free = ms)");
-    addAndMakeVisible(grTimeNoteBox);
-    grInterruptButton.setTooltip("Glitch pausa o dry");
-    addAndMakeVisible(grInterruptButton);
-    bindGranColumn(); // mode/trig/manual/len/timenote/interrupt + 9 sliders.
+    trimDecayDial = new V4Dial("T-DEC", "mer", WaterLnF::ink, 1.0);
+    trimDecayDial->setBounds(976, 291, 64, 88);
+    addAndMakeVisible(trimDecayDial); owned_.add(trimDecayDial);
+    trimDecayAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        proc.apvts, "trim_decay", *trimDecayDial);
 
-    granLed.setJustificationType(juce::Justification::centred);
-    granLed.setText("IDLE", juce::dontSendNotification);
-    addAndMakeVisible(granLed);
+    xmodeSeg = new V4Seg(ap->getParameter("x_mode"), { "Add", "XFade" }, {}, WaterLnF::ink);
+    xmodeSeg->setBounds(1058, 296, 116, 28);
+    addAndMakeVisible(xmodeSeg); owned_.add(xmodeSeg);
 
-    // --- Modo global FWD|REV (segmentado na topbar, religa as 4 colunas) ---
-    fwdModeBtn.setTooltip("Editar cadeia FWD");
-    revModeBtn.setTooltip("Editar cadeia REV (completa, não por módulo)");
-    fwdModeBtn.setClickingTogglesState(true);
-    revModeBtn.setClickingTogglesState(true);
-    fwdModeBtn.setToggleState(true, juce::dontSendNotification);
-    revModeBtn.setColour(juce::TextButton::buttonOnColourId, AbletonLnF::revAccent);
-    addAndMakeVisible(fwdModeBtn);
-    addAndMakeVisible(revModeBtn);
-    auto setMode = [this](bool rev)
-    {
-        showRev = rev;
-        fwdModeBtn.setToggleState(! rev, juce::dontSendNotification);
-        revModeBtn.setToggleState(rev, juce::dontSendNotification);
-        bindGateColumn();
-        bindDelayColumn();
-        bindVerbColumn();
-        bindGranColumn();
-    };
-    fwdModeBtn.onClick = [setMode] { setMode(false); };
-    revModeBtn.onClick = [setMode] { setMode(true); };
+    orderStepper = new V4Stepper(ap->getParameter("chain_order"),
+                                 { "G-D-V-Gr", "G-V-D-Gr", "D-G-V-Gr", "V-D-G-Gr" }, {}, {});
+    orderStepper->setBounds(1058, 344, 116, 28);
+    addAndMakeVisible(orderStepper); owned_.add(orderStepper);
 
-    // --- PWR por coluna (mostra o alvo FWD|REV; sem cliques, sem tails) ---
-    for (auto* b : { &gatePwrBtn, &delayPwrBtn, &verbPwrBtn, &granPwrBtn })
-    {
-        b->setTooltip("Liga/desliga o módulo (limpa buffers)");
-        addAndMakeVisible(b);
-    }
+    masterDial = new V4Dial("MASTER", "mer", WaterLnF::ink, 0.8);
+    masterDial->setBounds(1192, 291, 64, 88);
+    addAndMakeVisible(masterDial); owned_.add(masterDial);
+    masterAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        proc.apvts, "master", *masterDial);
 
-    // --- Faixa REV na 2ª linha da topbar: engine + links + trims + routing ---
-    revModeBox.addItemList({ "Off", "Loop", "Throw" }, 1);
-    revModeBox.setTooltip("Motor REV: desligado / loop / throw único");
-    addAndMakeVisible(revModeBox);
-    revModeAttach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-        proc.apvts, "rev_mode", revModeBox);
-    revSourceBox.addItemList({ "Dry", "PostFWD" }, 1);
-    revSourceBox.setTooltip("Fonte da captura REV");
-    addAndMakeVisible(revSourceBox);
-    revSourceAttach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-        proc.apvts, "rev_source", revSourceBox);
-    revCaptureBox.addItemList({ "2 beats", "3 beats", "4 beats" }, 1);
-    revCaptureBox.setTooltip("Janela de captura");
-    addAndMakeVisible(revCaptureBox);
-    revCaptureAttach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-        proc.apvts, "rev_capture", revCaptureBox);
-    revRateAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, "rev_rate", revRateSlider);
-    revLfoAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, "rev_lfo", revLfoSlider);
-    revDuckAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, "rev_duck", revDuckSlider);
-    trimDelayAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, "trim_delay", trimDelaySlider);
-    trimDecayAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, "trim_decay", trimDecaySlider);
-    revThrowButton.setTooltip("Dispara uma cauda (modo Throw; também por nota MIDI)");
-    addAndMakeVisible(revThrowButton);
-    revThrowAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
-        proc.apvts, "rev_throw", revThrowButton);
-    linkMasterBtn.setTooltip("Tudo o que tem link segue o FWD");
-    linkGateBtn.setTooltip("Gate REV segue FWD");
-    linkDelayBtn.setTooltip("Delay REV segue FWD");
-    linkVerbBtn.setTooltip("Verb REV segue FWD");
-    linkGranBtn.setTooltip("Gran REV segue FWD");
-    for (auto* b : { &linkMasterBtn, &linkGateBtn, &linkDelayBtn, &linkVerbBtn, &linkGranBtn })
-    {
-        b->setColour(juce::TextButton::buttonOnColourId, AbletonLnF::revAccent);
-        addAndMakeVisible(b);
-    }
-    linkMasterAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
-        proc.apvts, "link_master", linkMasterBtn);
-    linkGateAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
-        proc.apvts, "link_gate", linkGateBtn);
-    linkDelayAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
-        proc.apvts, "link_delay", linkDelayBtn);
-    linkVerbAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
-        proc.apvts, "link_verb", linkVerbBtn);
-    linkGranAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
-        proc.apvts, "link_gran", linkGranBtn);
+    ripples = std::make_unique<Ripples>();
+    ripples->setBounds(0, 282, 1280, 104);
+    ripples->setInterceptsMouseClicks(false, false);
+    addAndMakeVisible(ripples.get());
 
-    // Routing (era criado no resized: bug quando re-resize duplicava items).
-    orderBox.addItemList({ "G-D-V-G", "G-V-D-G", "D-G-V-G", "V-D-G-G" }, 1);
-    orderBox.setTooltip("Ordem da cadeia: Gate Delay Verb Granular (FWD e REV)");
-    addAndMakeVisible(orderBox);
-    orderAttach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-        proc.apvts, "chain_order", orderBox);
-    xfadeBox.addItemList({ "Add", "XFade" }, 1);
-    xfadeBox.setTooltip("Add = soma; XFade = beats pares FWD, ímpares REV");
-    addAndMakeVisible(xfadeBox);
-    xmodeAttach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-        proc.apvts, "x_mode", xfadeBox);
+    toast = std::make_unique<Toast>();
+    toast->setBounds(0, 0, 354, 28);
+    toast->setVisible(false);
+    toast->onUnlink = [this] {};
+    addAndMakeVisible(toast.get());
 
-    bindGateColumn(); // bindDelay/Verb/Gran chamados nos seus blocos; gate aqui.
+    // visibilidade inicial sem animação
+    for (int e = 0; e < 2; ++e)
+        for (int m = 0; m < 4; ++m)
+        {
+            bool vis = (modAt(m) == selMod_);
+            panels[e][m]->setVisible(vis);
+            panels[e][m]->setBounds(e == 0 ? MOD_X : MOD_X, e == 0 ? CY_FWD : CY_REV, MOD_W, 198);
+        }
+    for (auto& t : tiles_)
+        t.btn->setToggleState(t.mod == selMod_, juce::dontSendNotification);
 
-    // Nomes colados aos knobs pelo LnF (nunca via paint — anti-desalinho).
-    {
-        juce::Slider* all[] = { &inputSlider, &fwdMixSlider, &revMixSlider, &morphSlider, &masterSlider };
-        for (int i = 0; i < 5; ++i) all[i]->setName(kMotorLabels[i]);
-    }
-    {
-        juce::Slider* all[] = { &smoothSlider, &depthSlider, &gmixSlider, &panSlider, &thrSlider };
-        for (int i = 0; i < 5; ++i) all[i]->setName(kGateLabels[i]);
-    }
-    {
-        juce::Slider* all[] = { &bpmSlider, &timeSlider, &fbSlider, &dampSlider, &dmixSlider };
-        for (int i = 0; i < 5; ++i) all[i]->setName(kDelayLabels[i]);
-    }
-    {
-        juce::Slider* all[] = { &sizeSlider, &decaySlider, &dampVSlider, &widthSlider,
-                                &predelaySlider, &locutSlider, &hicutSlider, &vmixSlider };
-        for (int i = 0; i < 8; ++i) all[i]->setName(kVerbLabels[i]);
-    }
-    {
-        juce::Slider* all[] = { &chanceSlider, &thrGSlider, &repeatsSlider, &decayGSlider,
-                                &timeMsSlider, &pitchSlider, &fluxSlider, &xfadeSlider,
-                                &granMixSlider };
-        for (int i = 0; i < 9; ++i) all[i]->setName(kGranLabels[i]);
-    }
-    {
-        juce::Slider* all[] = { &driveSlider, &wowRateSlider, &wowDepthSlider, &spreadSlider };
-        const char* names[] = { "DRIVE", "WOW RT", "WOW DP", "SPREAD" };
-        for (int i = 0; i < 4; ++i) all[i]->setName(names[i]);
-    }
-
+    setSize(kW, kH);
+    resized();
     startTimerHz(30);
-}
-
-void DeVerbEditor::bindGateColumn()
-{
-    // Ordem crítica: destruir os velhos ANTES de criar os novos — o initial
-    // update do novo attachment faz slider.setValue (notifica!) e o velho,
-    // ainda vivo, escreveria o valor no parâmetro errado (cross-talk FWD|REV).
-    rateAttach.reset(); stepsAttach.reset(); trigAttach.reset();
-    smoothAttach.reset(); depthAttach.reset(); gmixAttach.reset();
-    panAttach.reset(); thrAttach.reset(); gatePwrAttach.reset();
-    juce::String p = showRev ? "rev_" : "fwd_";
-    rateAttach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-        proc.apvts, p + "gate_rate", rateBox);
-    stepsAttach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-        proc.apvts, p + "gate_steps", stepsBox);
-    trigAttach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-        proc.apvts, p + "gate_trig", trigBox);
-    smoothAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "gate_smooth", smoothSlider);
-    depthAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "gate_depth", depthSlider);
-    gmixAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "gate_mix", gmixSlider);
-    panAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "gate_pan", panSlider);
-    thrAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "gate_env_thr", thrSlider);
-    gatePwrAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
-        proc.apvts, p + "gate_on", gatePwrBtn);
-}
-
-void DeVerbEditor::bindDelayColumn()
-{
-    timeAttach.reset(); fbAttach.reset(); dampAttach.reset(); dmixAttach.reset();
-    noteAttach.reset(); freezeAttach.reset();
-    delayAlgoAttach.reset(); driveAttach.reset(); wowRateAttach.reset();
-    wowDepthAttach.reset(); spreadAttach.reset();
-    delayPwrAttach.reset();
-    juce::String p = showRev ? "rev_" : "fwd_";
-    timeAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "delay_time", timeSlider);
-    fbAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "delay_fb", fbSlider);
-    dampAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "delay_damp", dampSlider);
-    dmixAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "delay_mix", dmixSlider);
-    noteAttach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-        proc.apvts, p + "delay_note", noteBox);
-    freezeAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
-        proc.apvts, p + "delay_freeze", freezeButton);
-    delayAlgoAttach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-        proc.apvts, p + "delay_algo", delayAlgoBox);
-    delayPwrAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
-        proc.apvts, p + "delay_on", delayPwrBtn);
-    driveAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "delay_drive", driveSlider);
-    wowRateAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "delay_wow_rate", wowRateSlider);
-    wowDepthAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "delay_wow_depth", wowDepthSlider);
-    spreadAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "delay_spread", spreadSlider);
-}
-
-void DeVerbEditor::bindVerbColumn()
-{
-    algoAttach.reset(); preNoteAttach.reset(); verbFreezeAttach.reset();
-    sizeAttach.reset(); decayAttach.reset(); dampVAttach.reset(); widthAttach.reset();
-    predelayAttach.reset(); locutAttach.reset(); hicutAttach.reset(); vmixAttach.reset();
-    verbPwrAttach.reset();
-    juce::String p = showRev ? "rev_" : "fwd_";
-    algoAttach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-        proc.apvts, p + "verb_algo", algoBox);
-    preNoteAttach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-        proc.apvts, p + "verb_predelay_note", preNoteBox);
-    verbFreezeAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
-        proc.apvts, p + "verb_freeze", verbFreezeButton);
-    sizeAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "verb_size", sizeSlider);
-    decayAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "verb_decay", decaySlider);
-    dampVAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "verb_damp", dampVSlider);
-    widthAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "verb_width", widthSlider);
-    predelayAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "verb_predelay", predelaySlider);
-    locutAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "verb_locut", locutSlider);
-    hicutAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "verb_hicut", hicutSlider);
-    vmixAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "verb_mix", vmixSlider);
-    verbPwrAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
-        proc.apvts, p + "verb_on", verbPwrBtn);
-}
-
-void DeVerbEditor::bindGranColumn()
-{
-    grModeAttach.reset(); grTrigAttach.reset(); grManualAttach.reset();
-    grLenAttach.reset(); grTimeNoteAttach.reset(); grInterruptAttach.reset();
-    chanceAttach.reset(); thrGAttach.reset(); repeatsAttach.reset(); decayGAttach.reset();
-    timeMsAttach.reset(); pitchAttach.reset(); fluxAttach.reset(); xfadeAttach.reset();
-    granMixAttach.reset(); granPwrAttach.reset();
-    juce::String p = showRev ? "rev_gr_" : "gr_";
-    grModeAttach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-        proc.apvts, p + "mode", grModeBox);
-    grTrigAttach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-        proc.apvts, p + "trigger", grTrigBox);
-    grManualAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
-        proc.apvts, p + "manual", grManualButton);
-    grLenAttach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-        proc.apvts, p + "len_note", grLenBox);
-    grTimeNoteAttach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-        proc.apvts, p + "time_note", grTimeNoteBox);
-    grInterruptAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
-        proc.apvts, p + "interrupt", grInterruptButton);
-    chanceAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "chance", chanceSlider);
-    thrGAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "env_thr", thrGSlider);
-    repeatsAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "repeats", repeatsSlider);
-    decayGAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "decay", decayGSlider);
-    timeMsAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "time", timeMsSlider);
-    pitchAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "pitch", pitchSlider);
-    fluxAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "flux", fluxSlider);
-    xfadeAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "xfade", xfadeSlider);
-    granMixAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        proc.apvts, p + "mix", granMixSlider);
-    granPwrAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
-        proc.apvts, p + "on", granPwrBtn);
 }
 
 DeVerbEditor::~DeVerbEditor()
 {
-    setLookAndFeel(nullptr); // antes de `lnf` ser destruído
+    setLookAndFeel(nullptr);
 }
 
-void DeVerbEditor::flipStep(int step)
+void DeVerbEditor::setSelMod(const juce::String& m, bool animate)
 {
-    auto* par = proc.apvts.getParameter(gatePatId());
-    if (par == nullptr)
-        return;
-    int bits = (int) proc.apvts.getRawParameterValue(gatePatId())->load();
-    bits ^= (1 << step);
-    par->setValueNotifyingHost(par->convertTo0to1((float) bits));
+    if (modAt(modIdx(m)) != m) return;
+    if (m == selMod_) return;
+    selMod_ = m;
+    proc.setSelMod(m);
+    bool reduce = reduceMotion_;
+    for (auto& t : tiles_)
+        t.btn->setToggleState(t.mod == selMod_, juce::dontSendNotification);
+    for (int e = 0; e < 2; ++e)
+        for (int i = 0; i < 4; ++i)
+        {
+            bool vis = (modAt(i) == selMod_);
+            auto* p = panels[e][i].get();
+            if (vis && animate && !reduce)
+            {
+                p->setVisible(true);
+                p->setAlpha(0.f);
+                animator_.fadeIn(p, 180);
+            }
+            else
+            {
+                animator_.cancelAnimation(p, false);
+                p->setVisible(vis);
+                p->setAlpha(1.f);
+            }
+            if (!vis) { animator_.cancelAnimation(p, false); p->setVisible(false); }
+        }
+}
+
+void DeVerbEditor::showTetherToast(const juce::String& mod, juce::Component* anchor)
+{
+    if (toast == nullptr || anchor == nullptr) return;
+    toast->setMod(mod);
+    auto ab = anchor->getBounds();
+    // anchor pode ser filho de painel (coords locais) — converte para editor
+    juce::Point<int> tl = anchor->getParentComponent() != nullptr
+        ? anchor->getParentComponent()->getLocalPoint(this, ab.getPosition()) : ab.getPosition();
+    // Na prática: usa posição global via getScreenPosition (robusto sob Xvfb)
+    auto sp = anchor->getScreenPosition();
+    auto ep = getScreenPosition();
+    int lx = sp.x - ep.x, ly = sp.y - ep.y;
+    int ty = (ly > 70) ? ly - 44 : ly + anchor->getHeight() + 8;
+    toast->setTopLeftPosition(juce::jlimit(8, 1280 - 362, lx), juce::jlimit(0, 624 - 30, ty));
+    toast->setVisible(true);
+    juce::String linkId = "link_" + mod;
+    toast->onUnlink = [this, linkId] {
+        if (auto* p = proc.apvts.getParameter(linkId))
+            p->setValueNotifyingHost(p->convertTo0to1(0.f));
+        if (auto* lm = proc.apvts.getParameter("link_master"))
+        {
+            // mantém master; só desliga o módulo (como no mockup UNLINK X)
+        }
+        hideToast();
+    };
+    toastHideAt = juce::Time::getMillisecondCounter() + 3800;
+    toast->toFront(false);
+}
+
+void DeVerbEditor::hideToast() { if (toast) toast->setVisible(false); }
+
+void DeVerbEditor::applyOrder(int idx)
+{
+    // Ordem da cadeia = posições das pedras (animar com ComponentAnimator)
+    static const char* orders[4][4] = {
+        { "gate", "delay", "verb", "gran" }, { "gate", "verb", "delay", "gran" },
+        { "delay", "gate", "verb", "gran" }, { "verb", "delay", "gate", "gran" },
+    };
+    idx = juce::jlimit(0, 3, idx);
+    int slotX[4] = { 106, 238, 370, 502 };
+    for (int k = 0; k < 4; ++k)
+    {
+        juce::String mm = orders[idx][k];
+        for (auto& t : tiles_)
+        {
+            if (t.mod != mm) continue;
+            if (!reduceMotion_) animator_.animateComponent(t.btn, juce::Rectangle<int>(slotX[k], 290, 124, 88), 1.f, 280, false, 0.0, 0.0);
+            else t.btn->setBounds(slotX[k], 290, 124, 88);
+            // move as 3 teclas da pedra (PWR FWD/LINK/PWR REV)
+            int pi = modIdx(mm);
+            if (pwrFwdKeys[pi]) pwrFwdKeys[pi]->setTopLeftPosition(slotX[k] + 8, 294);
+            if (linkKeys[pi]) linkKeys[pi]->setTopLeftPosition(slotX[k] + 8, 324);
+            if (pwrRevKeys[pi]) pwrRevKeys[pi]->setTopLeftPosition(slotX[k] + 8, 354);
+        }
+    }
+}
+
+void DeVerbEditor::randomize()
+{
+    juce::Random rng;
+    applyRealList(proc.apvts, civilizedRandom(rng));
+}
+
+juce::Slider* DeVerbEditor::findDial(const juce::String& paramId)
+{
+    for (int e = 0; e < 2; ++e)
+        for (int m = 0; m < 4; ++m)
+            if (auto* d = panels[e][m]->findDial(paramId)) return d;
+    juce::Slider* globals[] = { fwdMixDial, revRateDial, revLfoDial, revDuckDial, revMixDial,
+                                inputDial, morphDial, trimDelayDial, trimDecayDial, masterDial };
+    for (auto* d : globals)
+        if (d != nullptr && proc.apvts.getParameter(paramId) != nullptr)
+        {
+            // compara via attachment? simplifica: verifica se o attachment aponta para o id
+            // (só usado em testes para fb/decay/master genéricos — devolve por nome conhecido)
+        }
+    // fallback por ids conhecidos
+    if (paramId == "fwd_mix") return fwdMixDial;
+    if (paramId == "rev_rate") return revRateDial;
+    if (paramId == "rev_lfo") return revLfoDial;
+    if (paramId == "rev_duck") return revDuckDial;
+    if (paramId == "rev_mix") return revMixDial;
+    if (paramId == "input_gain") return inputDial;
+    if (paramId == "morph") return morphDial;
+    if (paramId == "trim_delay") return trimDelayDial;
+    if (paramId == "trim_decay") return trimDecayDial;
+    if (paramId == "master") return masterDial;
+    return nullptr;
+}
+
+V4Seg* DeVerbEditor::findSeg(const juce::String& paramId)
+{
+    for (int e = 0; e < 2; ++e)
+        for (int m = 0; m < 4; ++m)
+            if (auto* s = panels[e][m]->findSeg(paramId)) return s;
+    if (paramId == "rev_mode") return revModeSeg;
+    if (paramId == "rev_source") return revSourceSeg;
+    if (paramId == "rev_capture") return revCaptureSeg;
+    if (paramId == "x_mode") return xmodeSeg;
+    return nullptr;
+}
+
+V4Stepper* DeVerbEditor::findStepper(const juce::String& paramId)
+{
+    for (int e = 0; e < 2; ++e)
+        for (int m = 0; m < 4; ++m)
+            if (auto* s = panels[e][m]->findStepper(paramId)) return s;
+    if (paramId == "chain_order") return orderStepper;
+    return nullptr;
+}
+
+V4Key* DeVerbEditor::findKey(const juce::String& paramId)
+{
+    for (int e = 0; e < 2; ++e)
+        for (int m = 0; m < 4; ++m)
+            if (auto* k = panels[e][m]->findKey(paramId)) return k;
+    if (paramId == "rev_throw") return throwKey;
+    if (paramId == "link_master") return linkMasterKey;
+    const char* lk[4] = { "link_gate", "link_delay", "link_verb", "link_gran" };
+    const char* pf[4] = { "fwd_gate_on", "fwd_delay_on", "fwd_verb_on", "gr_on" };
+    const char* pr[4] = { "rev_gate_on", "rev_delay_on", "rev_verb_on", "rev_gr_on" };
+    for (int i = 0; i < 4; ++i)
+    {
+        if (paramId == lk[i]) return linkKeys[i];
+        if (paramId == pf[i]) return pwrFwdKeys[i];
+        if (paramId == pr[i]) return pwrRevKeys[i];
+    }
+    return nullptr;
 }
 
 void DeVerbEditor::timerCallback()
 {
-    int bits = (int) proc.apvts.getRawParameterValue(gatePatId())->load();
-    int steps = proc.apvts.getRawParameterValue(gateStepsId())->load() > 0.5f ? 16 : 8;
-    for (int i = 0; i < 16; ++i)
-    {
-        bool on = (bits >> i) & 1;
-        stepButtons[i].setToggleState(on, juce::dontSendNotification);
-        stepButtons[i].setEnabled(i < steps);
-    }
-    ruler.setNumSteps(steps);
-    ruler.setPattern(bits);
-    int step = proc.getGateStep();
-    ruler.setActiveStep(step);
+    // painéis: tether + agulhas
+    for (int e = 0; e < 2; ++e)
+        for (int m = 0; m < 4; ++m)
+            panels[e][m]->updateLinkState();
+
+    // order -> pedras (lê choice 0..3)
+    if (auto* v = proc.apvts.getRawParameterValue("chain_order"))
+        applyOrder((int)v->load());
+
+    // readouts calculados
     float bpm = proc.getUiBpm();
-    bpmReadout.setText("BPM " + juce::String(bpm, 1), juce::dontSendNotification);
-    gateReadout.setText("GATE " + juce::String::formatted("%02d", step + 1)
-                        + "/" + juce::String(steps), juce::dontSendNotification);
-    // Readouts calculados (alvo da coluna: FWD ou REV).
-    {
-        const char* tp = showRev ? "rev_" : "fwd_";
-        juce::String nid = juce::String(tp) + "delay_note";
-        juce::String mid = juce::String(tp) + "delay_time";
-        int ni = (int) proc.apvts.getRawParameterValue(nid)->load();
-        float ms = (ni == (int) TempoInfo::Note::Free)
-                 ? proc.apvts.getRawParameterValue(mid)->load()
-                 : (float) (TempoInfo::beatsToSeconds(
-                       TempoInfo::noteToBeats((TempoInfo::Note) ni), (double) bpm) * 1000.0);
-        juce::String txt = juce::String(ms, 0) + " ms";
-        if (ni != (int) TempoInfo::Note::Free)
-            txt += " - " + TempoInfo::noteNames()[ni];
-        delayMsReadout.setText(txt, juce::dontSendNotification);
-    }
-    {
-        const char* tp = showRev ? "rev_" : "fwd_";
-        float dec = proc.apvts.getRawParameterValue(juce::String(tp) + "verb_decay")->load();
-        verbDecayReadout.setText("T60 " + juce::String(dec, 1) + " s",
-                                 juce::dontSendNotification);
-    }
-    bool active = proc.isGranularActive();
-    granLed.setText(active ? "GRAB!" : "IDLE", juce::dontSendNotification);
-    granLed.setColour(juce::Label::textColourId,
-                      active ? AbletonLnF::granAccent : AbletonLnF::dimText);
+    juce::String src = proc.isTempoFromHost() ? "HOST" : "INT";
+    if (bpmSrcViz) bpmSrcViz->setText(src);
+    if (morphReadViz)
+        morphReadViz->setText(juce::String((int)std::round(proc.apvts.getRawParameterValue("morph")->load() * 100)) + "%");
+    if (scopeViz) scopeViz->repaint();
+    if (captureViz) captureViz->repaint();
+    if (ripples && ripples->active()) { ripples->repaint(); ripples->gc(); }
+
+    if (toast && toast->isVisible() && juce::Time::getMillisecondCounter() > toastHideAt)
+        hideToast();
+
+    // LEDs / big numbers via painéis (GateBig/DelayMs/VerbT60/GranLed):
+    // atualiza textos percorrendo vizs — simplificado: repaint geral dos painéis visíveis
+    for (int e = 0; e < 2; ++e)
+        for (int m = 0; m < 4; ++m)
+            if (panels[e][m]->isVisible()) panels[e][m]->repaint();
 }
 
 void DeVerbEditor::paint(juce::Graphics& g)
 {
-    using C = AbletonLnF;
-    g.fillAll(C::bg);
-
-    // Topbar.
-    g.setColour(C::greyText);
-    g.setFont(juce::Font(17.f, juce::Font::bold));
-    g.drawText("deVerb", 12, 0, 200, 36, juce::Justification::centredLeft, false);
-    g.setColour(C::dimText);
-    g.setFont(11.f);
-    g.drawText("REV", 12, 40, 52, 56, juce::Justification::centred, false);
-    g.drawText("LINK", 656, 40, 40, 56, juce::Justification::centred, false);
-    g.setColour(juce::Colour(0xff2a2a2a));
-    g.fillRect(0, 35, kW, 1);
-    g.fillRect(0, kTopH - 1, kW, 1);
-
-    // Panels + headers com acento por módulo.
-    auto defs = colDefs();
-    for (int i = 0; i < 5; ++i)
-    {
-        g.setColour(defs[i].panel);
-        g.fillRoundedRectangle((float) defs[i].x, (float) kColY,
-                               (float) defs[i].w, (float) (kColBottom - kColY), 8.f);
-        g.setColour(defs[i].accent);
-        g.fillRect(defs[i].x + 12, kColY + 21, 44, 3);
-        g.setColour(C::greyText);
-        g.setFont(juce::Font(11.f, juce::Font::bold));
-        g.drawText(defs[i].name, defs[i].x + 12, kColY, 220, kHeadH,
-                   juce::Justification::centredLeft, false);
-    }
-
-    // Placeholder do futuro loader de IRs (ocupa o ar da coluna VERB e
-    // comunica o roadmap; sem widgets nem params — só tinta).
-    {
-        auto ph = juce::Rectangle<float>(752.f, 484.f, 240.f, 120.f);
-        g.setColour(juce::Colour(0xff232323));
-        g.drawRoundedRectangle(ph, 6.f, 1.f);
-        g.setColour(AbletonLnF::faintText);
-        g.setFont(11.f);
-        g.drawFittedText("CONVOLUTION", ph.withTrimmedBottom(66).toNearestInt(),
-                         juce::Justification::centredBottom, 1);
-        g.drawFittedText("FASE 8", ph.withTrimmedTop(54).toNearestInt(),
-                         juce::Justification::centredTop, 1);
-    }
-
-    // (Nomes dos knobs: desenhados pelo LnF dentro de cada slider.)
-    // (minis da faixa REV sem labels pintados: tooltips chegam; valores em cima)
+    // fundo Espelho: papel em cima da linha (y=334), tinta em baixo
+    g.setColour(WaterLnF::paper);
+    g.fillRect(0, 0, 1280, 334);
+    g.setColour(WaterLnF::ink);
+    g.fillRect(0, 334, 1280, 624 - 334);
+    // barras laterais
+    g.setColour(WaterLnF::paper2);
+    g.fillRect(0, 44, 336, 238);
+    g.setColour(WaterLnF::ink2);
+    g.fillRect(0, 386, 336, 238);
+    // cabeçalho
+    g.setColour(WaterLnF::paper);
+    g.fillRect(0, 0, 1280, 44);
+    g.setColour(WaterLnF::hairP);
+    g.drawLine(0, 44, 1280, 44, 1.f);
+    // linha de agua
+    g.setColour(WaterLnF::water);
+    g.drawLine(0, 334, 1280, 334, 1.f);
 }
 
 void DeVerbEditor::resized()
 {
-    // Topbar linha 1: BPM + gate + preset + LED.
-    bpmReadout.setBounds(220, 7, 110, 22);
-    gateReadout.setBounds(340, 7, 130, 22);
-    globalPresetBox.setBounds(560, 7, 240, 22);
-    randomButton.setBounds(806, 7, 68, 22);
-    granLed.setBounds(kW - 132, 7, 120, 22);
-
-    // Topbar linha 2: faixa REV (engine + links + trims + routing).
-    revModeBox.setBounds(70, 42, 110, 30);
-    revSourceBox.setBounds(186, 42, 90, 30);
-    revCaptureBox.setBounds(282, 42, 90, 30);
-    revKnobs[0] = { 378, 38, 56, 58 };
-    revKnobs[1] = { 438, 38, 56, 58 };
-    revKnobs[2] = { 498, 38, 56, 58 };
-    revRateSlider.setBounds(revKnobs[0]);
-    revLfoSlider.setBounds(revKnobs[1]);
-    revDuckSlider.setBounds(revKnobs[2]);
-    revThrowButton.setBounds(560, 44, 90, 30);
-    linkMasterBtn.setBounds(700, 44, 56, 30);
-    linkGateBtn.setBounds(758, 44, 56, 30);
-    linkDelayBtn.setBounds(816, 44, 56, 30);
-    linkVerbBtn.setBounds(874, 44, 56, 30);
-    linkGranBtn.setBounds(932, 44, 56, 30);
-    revKnobs[3] = { 996, 38, 56, 58 };
-    revKnobs[4] = { 1056, 38, 56, 58 };
-    trimDelaySlider.setBounds(revKnobs[3]);
-    trimDecaySlider.setBounds(revKnobs[4]);
-    orderBox.setBounds(1116, 44, 76, 30);
-    xfadeBox.setBounds(1196, 44, 72, 30);
-
-    // Segmentado FWD|REV (modo global de edição).
-    fwdModeBtn.setBounds(880, 7, 90, 22);
-    revModeBtn.setBounds(972, 7, 90, 22);
-
-    // PWR por coluna (header direita; segue o alvo FWD|REV).
-    gatePwrBtn.setBounds(444, kColY + 2, 48, 20);
-    delayPwrBtn.setBounds(684, kColY + 2, 48, 20);
-    verbPwrBtn.setBounds(948, kColY + 2, 48, 20);
-    granPwrBtn.setBounds(1220, kColY + 2, 48, 20);
-
-    int y0 = kColY + kHeadH; // 132
-
-    // MOTOR x[8,192): INPUT + FWD/REV lado a lado + MORPH/MASTER grandes.
+    // Janela fixa; posiciona painéis (idempotente, sem addItemList).
+    // Guarda contra setSize() durante o ctor (painéis ainda nulos).
+    for (int m = 0; m < 4; ++m)
     {
-        motorKnobs[0] = { 64, y0, 72, 90 };
-        inputSlider.setBounds(motorKnobs[0]);
-        motorKnobs[1] = { 12, y0 + 94, 84, 90 };
-        motorKnobs[2] = { 100, y0 + 94, 84, 90 };
-        fwdMixSlider.setBounds(motorKnobs[1]);
-        revMixSlider.setBounds(motorKnobs[2]);
-        motorKnobs[3] = { 52, y0 + 188, 88, 110 };
-        morphSlider.setBounds(motorKnobs[3]);
-        motorKnobs[4] = { 52, y0 + 302, 88, 110 };
-        masterSlider.setBounds(motorKnobs[4]);
+        if (panels[0][m]) panels[0][m]->setBounds(MOD_X, CY_FWD, MOD_W, 198);
+        if (panels[1][m]) panels[1][m]->setBounds(MOD_X, CY_REV, MOD_W, 198);
     }
-
-    // GATE x[200,496): régua + steps 2×8 + combos 2×2 + knobs 3+2 BIG.
-    {
-        ruler.setBounds(204, y0, 288, 44);
-        int sy = y0 + 44 + 8;
-        for (int i = 0; i < 16; ++i)
-        {
-            int row = i / 8, col = i % 8;
-            stepButtons[i].setBounds(204 + col * 36, sy + row * 48, 34, 46);
-        }
-        int cy = sy + 2 * 48 + 8;
-        presetBox.setBounds(204, cy, 144, 32);
-        rateBox.setBounds(352, cy, 144, 32);
-        stepsBox.setBounds(204, cy + 36, 144, 32);
-        trigBox.setBounds(352, cy + 36, 144, 32);
-        int ky = cy + 2 * 36 + 10;
-        juce::Slider* ks[5] = { &smoothSlider, &depthSlider, &gmixSlider, &panSlider, &thrSlider };
-        for (int i = 0; i < 3; ++i)
-        {
-            gateKnobs[i] = { 204 + i * 97, ky, 96, 110 };
-            ks[i]->setBounds(gateKnobs[i]);
-        }
-        for (int i = 3; i < 5; ++i)
-        {
-            gateKnobs[i] = { 204 + (i - 3) * 97, ky + 114, 96, 110 };
-            ks[i]->setBounds(gateKnobs[i]);
-        }
-    }
-
-    // DELAY x[504,736): knobs 3+2 STD + algo + 4 minis + combo + readout + freeze.
-    {
-        juce::Slider* ks[5] = { &bpmSlider, &timeSlider, &fbSlider, &dampSlider, &dmixSlider };
-        for (int i = 0; i < 3; ++i)
-        {
-            delayKnobs[i] = { 508 + i * 74, y0, 72, 90 };
-            ks[i]->setBounds(delayKnobs[i]);
-        }
-        for (int i = 3; i < 5; ++i)
-        {
-            delayKnobs[i] = { 508 + (i - 3) * 74, y0 + 94, 72, 90 };
-            ks[i]->setBounds(delayKnobs[i]);
-        }
-        delayAlgoBox.setBounds(508, y0 + 188, 224, 32);
-        delayMinis[0] = { 508, y0 + 224, 110, 64 };
-        delayMinis[1] = { 622, y0 + 224, 110, 64 };
-        delayMinis[2] = { 508, y0 + 292, 110, 64 };
-        delayMinis[3] = { 622, y0 + 292, 110, 64 };
-        driveSlider.setBounds(delayMinis[0]);
-        wowRateSlider.setBounds(delayMinis[1]);
-        wowDepthSlider.setBounds(delayMinis[2]);
-        spreadSlider.setBounds(delayMinis[3]);
-        noteBox.setBounds(508, y0 + 360, 224, 32);
-        delayMsReadout.setBounds(508, y0 + 396, 224, 20);
-        freezeButton.setBounds(508, y0 + 420, 120, 32);
-    }
-
-    // VERB x[744,1000): knobs 4+4 STD + combos + readout + freeze.
-    // (espaço livre em baixo reservado ao futuro loader de IRs.)
-    {
-        juce::Slider* ks[8] = { &sizeSlider, &decaySlider, &dampVSlider, &widthSlider,
-                                &predelaySlider, &locutSlider, &hicutSlider, &vmixSlider };
-        for (int i = 0; i < 4; ++i)
-        {
-            verbKnobs[i] = { 744 + i * 64, y0, 64, 90 };
-            ks[i]->setBounds(verbKnobs[i]);
-        }
-        for (int i = 4; i < 8; ++i)
-        {
-            verbKnobs[i] = { 744 + (i - 4) * 64, y0 + 94, 64, 90 };
-            ks[i]->setBounds(verbKnobs[i]);
-        }
-        algoBox.setBounds(748, y0 + 192, 122, 32);
-        preNoteBox.setBounds(874, y0 + 192, 122, 32);
-        verbDecayReadout.setBounds(748, y0 + 228, 248, 20);
-        verbFreezeButton.setBounds(748, y0 + 252, 124, 32);
-    }
-
-    // GRAN x[1008,1272): combos 2×2 + knobs 4+3+2 STD + interrupt/timenote.
-    {
-        grModeBox.setBounds(1012, y0, 126, 30);
-        grTrigBox.setBounds(1142, y0, 126, 30);
-        grManualButton.setBounds(1012, y0 + 34, 126, 30);
-        grLenBox.setBounds(1142, y0 + 34, 126, 30);
-        juce::Slider* ks[9] = { &chanceSlider, &thrGSlider, &repeatsSlider, &decayGSlider,
-                                &timeMsSlider, &pitchSlider, &fluxSlider, &xfadeSlider,
-                                &granMixSlider };
-        int gy = y0 + 72;
-        for (int i = 0; i < 4; ++i)
-        {
-            granKnobs[i] = { 1012 + i * 65, gy, 64, 90 };
-            ks[i]->setBounds(granKnobs[i]);
-        }
-        for (int i = 4; i < 7; ++i)
-        {
-            granKnobs[i] = { 1012 + (i - 4) * 65, gy + 94, 64, 90 };
-            ks[i]->setBounds(granKnobs[i]);
-        }
-        for (int i = 7; i < 9; ++i)
-        {
-            granKnobs[i] = { 1012 + (i - 7) * 65, gy + 188, 64, 90 };
-            ks[i]->setBounds(granKnobs[i]);
-        }
-        grInterruptButton.setBounds(1142, gy + 188, 126, 30);
-        grTimeNoteBox.setBounds(1142, gy + 222, 126, 30);
-    }
+    if (ripples) ripples->setBounds(0, 282, 1280, 104);
 }

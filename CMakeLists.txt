@@ -38,6 +38,15 @@ juce_add_plugin(deVerb
   LV2URI https://pedrolabs.example/deverb
 )
 
+# Fonte embutida v4 (Nimbus Sans, decisão UI v4): via BinaryData.
+juce_add_binary_data(deVerbFonts
+  HEADER_NAME DeVerbFonts.h
+  NAMESPACE DeVerbFonts
+  SOURCES
+    Source/ui/fonts/NimbusSans-Regular.otf
+    Source/ui/fonts/NimbusSans-Bold.otf
+)
+
 target_sources(deVerb PRIVATE
   Source/PluginProcessor.cpp
   Source/PluginEditor.cpp
@@ -55,9 +64,22 @@ target_sources(deVerb PRIVATE
   Source/core/RevLinker.h
   Source/ui/BeatRuler.h
   Source/ui/AbletonLnF.h
+  Source/ui/WaterLnF.h
+  Source/ui/WaterLnF.cpp
+  Source/ui/V4Dial.h
+  Source/ui/V4Seg.h
+  Source/ui/V4Stepper.h
+  Source/ui/V4Num.h
+  Source/ui/V4Key.h
+  Source/ui/V4Viz.h
+  Source/ui/V4Viz.cpp
+  Source/ui/V4ModulePanel.h
+  Source/ui/V4ModulePanel.cpp
+  Source/ui/V4Tile.h
 )
 
 target_link_libraries(deVerb PRIVATE
+  deVerbFonts
   juce::juce_audio_utils
   juce::juce_dsp
   juce::juce_recommended_config_flags

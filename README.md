@@ -82,7 +82,7 @@ freeze/interrupt/manual OFF, morph contido; master/input fixos).
   presets, RANDOM, PWR, restore; correr sob xvfb).
   Correr: `cmake --build tests/build --target test_dsp test_chain test_ui`.
 
-## Tabela de parâmetros (112 IDs únicos)
+## Tabela de parâmetros (122 IDs únicos)
 
 Gerada do `createParams` — se algum ID se repetir, o teste de geração acusa.
 `fwd_*` = cadeia normal, `rev_*` = cadeia reversa (editável com o interruptor
@@ -189,6 +189,16 @@ global FWD|REV da topbar), `gr_*` = granular FWD, `rev_gr_*` = granular REV.
 | `chain_order` | Chain Order | choice | G-D-V-Gr|G-V-D-Gr|D-G-V-Gr|V-D-G-Gr | G-D-V-Gr |
 | `x_mode` | X Mode | choice | Add|XFade | Add |
 | `rev_gate_steps` | REV Gate Steps | choice | 8|16 | 16 |
+| `fwd_delay_note` | FWD Delay Note | choice-nota | Free\|1/32\|1/16T\|1/16\|1/16D\|1/8T\|1/8\|1/8D\|1/4\|1/4D\|1/2\|1/1 | 1/8D |
+| `fwd_gate_rate` | FWD Gate Rate | choice-nota | Free\|1/32\|1/16T\|1/16\|1/16D\|1/8T\|1/8\|1/8D\|1/4\|1/4D\|1/2\|1/1 | 1/16 |
+| `fwd_verb_predelay_note` | FWD Verb PreDelay Note | choice-nota | Free\|1/32\|1/16T\|1/16\|1/16D\|1/8T\|1/8\|1/8D\|1/4\|1/4D\|1/2\|1/1 | Free |
+| `gr_len_note` | Gran Len Note | choice-nota | Free\|1/32\|1/16T\|1/16\|1/16D\|1/8T\|1/8\|1/8D\|1/4\|1/4D\|1/2\|1/1 | 1/16 |
+| `gr_time_note` | Gran Time Note | choice-nota | Free\|1/32\|1/16T\|1/16\|1/16D\|1/8T\|1/8\|1/8D\|1/4\|1/4D\|1/2\|1/1 | Free |
+| `rev_delay_note` | REV Delay Note | choice-nota | Free\|1/32\|1/16T\|1/16\|1/16D\|1/8T\|1/8\|1/8D\|1/4\|1/4D\|1/2\|1/1 | 1/8D |
+| `rev_gate_rate` | REV Gate Rate | choice-nota | Free\|1/32\|1/16T\|1/16\|1/16D\|1/8T\|1/8\|1/8D\|1/4\|1/4D\|1/2\|1/1 | 1/16 |
+| `rev_verb_predelay_note` | REV Verb PreDelay Note | choice-nota | Free\|1/32\|1/16T\|1/16\|1/16D\|1/8T\|1/8\|1/8D\|1/4\|1/4D\|1/2\|1/1 | Free |
+| `rev_gr_len_note` | REV Gran Len Note | choice-nota | Free\|1/32\|1/16T\|1/16\|1/16D\|1/8T\|1/8\|1/8D\|1/4\|1/4D\|1/2\|1/1 | 1/16 |
+| `rev_gr_time_note` | REV Gran Time Note | choice-nota | Free\|1/32\|1/16T\|1/16\|1/16D\|1/8T\|1/8\|1/8D\|1/4\|1/4D\|1/2\|1/1 | Free |
 | `rev_gate_trig` | REV Gate Trig | choice | Host|Midi|Transient|Free | Host |
 | `rev_delay_algo` | REV Delay Algo | choice | Digital|Tape|PingPong|MultiTap|Reverse | Digital |
 | `rev_verb_algo` | REV Verb Algo | choice | Room|Hall|Plate|Shimmer | Hall |

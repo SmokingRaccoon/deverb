@@ -1,19 +1,27 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
-#include "ui/BeatRuler.h"
-#include "ui/AbletonLnF.h"
+#include "ui/WaterLnF.h"
+#include "ui/V4Dial.h"
+#include "ui/V4Seg.h"
+#include "ui/V4Stepper.h"
+#include "ui/V4Num.h"
+#include "ui/V4Key.h"
+#include "ui/V4Viz.h"
+#include "ui/V4ModulePanel.h"
+#include "ui/V4Tile.h"
 
 class DeVerbProcessor;
 
-// UI horizontal 1280×620 estilo Ableton minimal: topbar + 5 colunas com
-// knobs rotativos compactos. Nomes dos params pintados no paint().
-// Lógica (attachments, Timer, flipStep) igual à versão vertical.
+// UI v4 "Espelho de Agua" (DESIGN-V4.md, LAYOUT-V4.md).
+// Janela fixa 1280x624. FWD em cima (papel), REV em baixo (tinta),
+// meridiano com a relação (LINK/MORPH/TRIM). 8 ModulePanels (4 mods x
+// FWD/REV) com attachments criados UMA vez no ctor — sem bind*Column.
+// selectedModule vive em apvts.state > v4ui > selMod (fora dos 122 IDs).
 class DeVerbEditor : public juce::AudioProcessorEditor,
-                     private juce::Timer
+                     private juce::Timer,
+                     private juce::ValueTree::Listener
 {
-    // Harness de testes de sessão (tests/test_ui.cpp): conduz a UI como
-    // um heavy user (flips FWD|REV, tweaks, presets, resizes).
     friend struct UiSessionDriver;
 public:
     explicit DeVerbEditor(DeVerbProcessor&);
@@ -21,103 +29,132 @@ public:
     void paint(juce::Graphics& g) override;
     void resized() override;
 
+    juce::String getSelMod() const { return selMod_; }
+    void setSelMod(const juce::String& m, bool animate = true);
+
+    // Para testes: acesso por paramID através dos painéis + globais
+    juce::Slider* findDial(const juce::String& paramId);
+    V4Seg* findSeg(const juce::String& paramId);
+    V4Stepper* findStepper(const juce::String& paramId);
+    V4Key* findKey(const juce::String& paramId);
+
 private:
     void timerCallback() override;
-    void flipStep(int step);
-    // (Re)liga os attachments de cada coluna aos params FWD ou REV.
-    void bindGateColumn();
-    void bindDelayColumn();
-    void bindVerbColumn();
-    void bindGranColumn();
-    const char* gatePatId() const   { return showRev ? "rev_gate_pattern" : "fwd_gate_pattern"; }
-    const char* gateStepsId() const { return showRev ? "rev_gate_steps" : "fwd_gate_steps"; }
+    void valueTreePropertyChanged(juce::ValueTree&, const juce::Identifier&) override {}
+    void showTetherToast(const juce::String& mod, juce::Component* anchor);
+    void hideToast();
+    void applyOrder(int idx);
+    void randomize();
 
     DeVerbProcessor& proc;
-    AbletonLnF lnf;
-    juce::Label gateReadout; // "GATE 07/16" na topbar
-    // Modo global de edição FWD|REV (um interruptor na topbar religa tudo).
-    juce::ToggleButton fwdModeBtn { "FWD" }, revModeBtn { "REV" };
-    bool showRev = false;
-    // PWR por coluna (liga/desliga o módulo mostrado; entra nos binds).
-    juce::ToggleButton gatePwrBtn { "PWR" }, delayPwrBtn { "PWR" },
-                       verbPwrBtn { "PWR" }, granPwrBtn { "PWR" };
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>
-        gatePwrAttach, delayPwrAttach, verbPwrAttach, granPwrAttach;
-    // Faixa REV na 2ª linha da topbar: engine + links + trims.
-    juce::ComboBox revModeBox, revSourceBox, revCaptureBox;
-    // Fase 6: preset global (topbar) + routing (faixa REV).
-    juce::ComboBox globalPresetBox, orderBox, xfadeBox;
-    // Botão RANDOM: gera um preset totalmente aleatório (topbar).
-    juce::TextButton randomButton { "RANDOM" };
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>
-        orderAttach, xmodeAttach;    juce::ToggleButton revThrowButton { "THROW" };
-    juce::ToggleButton linkMasterBtn { "ALL" }, linkGateBtn { "GATE" },
-                       linkDelayBtn { "DLY" }, linkVerbBtn { "VRB" },
-                       linkGranBtn { "GRN" };
-    juce::Slider revRateSlider, revLfoSlider, revDuckSlider,
-                 trimDelaySlider, trimDecaySlider;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>
-        revModeAttach, revSourceAttach, revCaptureAttach;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>
-        revThrowAttach, linkMasterAttach, linkGateAttach, linkDelayAttach,
-        linkVerbAttach, linkGranAttach;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>
-        revRateAttach, revLfoAttach, revDuckAttach, trimDelayAttach, trimDecayAttach;
-    juce::Rectangle<int> revKnobs[5];
-    // Fila 1 (fase 0)
-    juce::Slider inputSlider, fwdMixSlider, revMixSlider, morphSlider, masterSlider;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>
-        inputAttach, fwdMixAttach, revMixAttach, morphAttach, masterAttach;
-    // Fila 2 (fase 1: delay + tempo) + fase 7 (algos: combo + 4 minis).
-    juce::Slider bpmSlider, timeSlider, fbSlider, dampSlider, dmixSlider;
-    juce::ComboBox noteBox, delayAlgoBox;
-    juce::Slider driveSlider, wowRateSlider, wowDepthSlider, spreadSlider;
-    juce::ToggleButton freezeButton { "Freeze" };
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>
-        bpmAttach, timeAttach, fbAttach, dampAttach, dmixAttach;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>
-        noteAttach, delayAlgoAttach;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>
-        driveAttach, wowRateAttach, wowDepthAttach, spreadAttach;
-    juce::Rectangle<int> delayMinis[4];
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> freezeAttach;
-    // Fila 3 (fase 2: gate)
-    BeatRuler ruler;
-    juce::ToggleButton stepButtons[16];
-    juce::ComboBox presetBox, rateBox, stepsBox, trigBox;
-    juce::Slider smoothSlider, depthSlider, gmixSlider, panSlider, thrSlider;
-    juce::Label bpmReadout;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>
-        rateAttach, stepsAttach, trigAttach;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>
-        smoothAttach, depthAttach, gmixAttach, panAttach, thrAttach;
-    // Fila 4 (fase 3: reverb)
-    juce::ComboBox algoBox, preNoteBox;
-    juce::ToggleButton verbFreezeButton { "Freeze" };
-    juce::Slider sizeSlider, decaySlider, dampVSlider, widthSlider, predelaySlider,
-                 locutSlider, hicutSlider, vmixSlider;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>
-        algoAttach, preNoteAttach;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> verbFreezeAttach;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>
-        sizeAttach, decayAttach, dampVAttach, widthAttach, predelayAttach,
-        locutAttach, hicutAttach, vmixAttach;
-    // Fila 5 (fase 4: granular)
-    juce::ComboBox grModeBox, grTrigBox, grLenBox, grTimeNoteBox;
-    juce::ToggleButton grManualButton { "GRAB" }, grInterruptButton { "Interrupt" };
-    juce::Label granLed;
-    juce::Slider chanceSlider, thrGSlider, repeatsSlider, decayGSlider, timeMsSlider,
-                 pitchSlider, fluxSlider, xfadeSlider, granMixSlider;
-    // Readouts calculados (delay ms, verb decay) + bounds dos knobs.
-    juce::Label delayMsReadout, verbDecayReadout;
-    // Bounds dos knobs (preenchidos em resized(), lidos em paint() p/ labels).
-    juce::Rectangle<int> motorKnobs[5], gateKnobs[5], delayKnobs[5],
-                         verbKnobs[8], granKnobs[9];    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>
-        grModeAttach, grTrigAttach, grLenAttach, grTimeNoteAttach;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>
-        grManualAttach, grInterruptAttach;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>
-        chanceAttach, thrGAttach, repeatsAttach, decayGAttach, timeMsAttach,
-        pitchAttach, fluxAttach, xfadeAttach, granMixAttach;
+    WaterLnF lnf;
+    juce::String selMod_ { "gate" };
+
+    // 8 painéis (o módulo selecionado visível em FWD+REV)
+    std::unique_ptr<V4ModulePanel> panels[2][4]; // [fwd=0/rev=1][gate/delay/verb/gran]
+    int modIndex(const juce::String& m) const;
+
+    // Header 44
+    V4Viz* titleViz = nullptr;
+    V4Stepper* presetStepper = nullptr;
+    V4Key* randomKey = nullptr;
+    V4Num* bpmNum = nullptr;
+    V4Viz* bpmSrcViz = nullptr;
+
+    // Sidebars
+    V4Viz* engineFwdViz = nullptr;
+    V4Viz* scopeViz = nullptr;
+    V4Dial* fwdMixDial = nullptr;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> fwdMixAtt;
+    V4Viz* engineRevViz = nullptr;
+    V4Seg* revModeSeg = nullptr;
+    V4Seg* revSourceSeg = nullptr;
+    V4Seg* revCaptureSeg = nullptr;
+    V4Viz* captureViz = nullptr;
+    V4Dial* revRateDial = nullptr;
+    V4Dial* revLfoDial = nullptr;
+    V4Dial* revDuckDial = nullptr;
+    V4Dial* revMixDial = nullptr;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> revRateAtt, revLfoAtt, revDuckAtt, revMixAtt;
+
+    // Meridiano
+    struct Tile { V4Tile* btn = nullptr; juce::String mod; };
+    std::vector<Tile> tiles_;
+    V4Dial* inputDial = nullptr;
+    V4Dial* morphDial = nullptr;
+    V4Dial* trimDelayDial = nullptr;
+    V4Dial* trimDecayDial = nullptr;
+    V4Dial* masterDial = nullptr;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> inputAtt, morphAtt, trimDelayAtt, trimDecayAtt, masterAtt;
+    V4Key* throwKey = nullptr;
+    V4Key* linkMasterKey = nullptr;
+    V4Key* linkKeys[4] = {};
+    V4Key* pwrFwdKeys[4] = {};
+    V4Key* pwrRevKeys[4] = {};
+    V4Seg* xmodeSeg = nullptr;
+    V4Stepper* orderStepper = nullptr;
+    V4Viz* morphReadViz = nullptr;
+
+    // Toast UNLINK (CallOutBox-like, mas Component próprio para posição livre)
+    struct Toast : public juce::Component
+    {
+        juce::Label label;
+        juce::TextButton unlinkBtn { "UNLINK" };
+        std::function<void()> onUnlink;
+        Toast() { addAndMakeVisible(label); addAndMakeVisible(unlinkBtn);
+                  unlinkBtn.onClick = [this] { if (onUnlink) onUnlink(); }; }
+        void setMod(const juce::String& m)
+        {
+            label.setText("LINK " + m.toUpperCase() + " ON - REV FOLLOWS FWD",
+                          juce::dontSendNotification);
+            unlinkBtn.setButtonText("UNLINK " + m.toUpperCase());
+        }
+        void resized() override
+        {
+            label.setBounds(0, 0, 240, 28);
+            unlinkBtn.setBounds(244, 0, 110, 28);
+        }
+    };
+    std::unique_ptr<Toast> toast;
+    int toastHideAt = 0; // Time::getMillisecondCounter
+
+    // Ripples do THROW (3 anéis 1.5s, só com Timer enquanto ativos)
+    struct Ripples : public juce::Component
+    {
+        struct R { float x = 0; int born = 0; };
+        std::vector<R> live_;
+        void fire(float x)
+        {
+            int now = juce::Time::getMillisecondCounter();
+            for (int i = 0; i < 3; ++i) live_.push_back({ x, now + i * 180 });
+        }
+        void paint(juce::Graphics& g) override
+        {
+            int now = juce::Time::getMillisecondCounter();
+            g.setColour(juce::Colours::white);
+            for (auto& r : live_)
+            {
+                float t = (now - r.born) / 1500.f;
+                if (t < 0 || t > 1) continue;
+                float w = 10 + t * 90, h = 4 + t * 16;
+                g.drawEllipse(r.x - w/2, getHeight()/2 - h/2, w, h, 1.5f);
+            }
+        }
+        bool active() const
+        {
+            int now = juce::Time::getMillisecondCounter();
+            for (auto& r : live_) if (now - r.born < 2200) return true;
+            return false;
+        }
+        void gc() { int now = juce::Time::getMillisecondCounter();
+                    live_.erase(std::remove_if(live_.begin(), live_.end(),
+                        [now](auto& r){ return now - r.born > 2300; }), live_.end()); }
+    };
+    std::unique_ptr<Ripples> ripples;
+
+    juce::OwnedArray<juce::Component> owned_;
+    juce::ComponentAnimator animator_;
+    bool reduceMotion_ = false;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DeVerbEditor)
 };

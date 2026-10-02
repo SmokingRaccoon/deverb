@@ -26,10 +26,14 @@ public:
     }
     void reset() { std::fill(buf.begin(), buf.end(), 0.f); fstate = 0.f; }
     void setLength(int len)   { length = juce::jlimit(1, cap, len); }
-    void setFeedback(float g) { fb = g; }
-    void setDamp(float d)     { damp = juce::jlimit(0.f, 0.95f, d); } // 0 = brilhante
+    void setFeedback(float g) { fbT = g; }   // alvo; o process chega lá (~30 ms)
+    void setDamp(float d)     { dampT = juce::jlimit(0.f, 0.95f, d); } // 0 = brilhante
+    void snap()               { fb = fbT; damp = dampT; } // pós-prepare/testes
     float process(float x)
     {
+        // Slew de fb/damp: mudanças de T60/damping/freeze sem cliques.
+        fb += (fbT - fb) * slewK;
+        damp += (dampT - damp) * slewK;
         int r = w - length;
         if (r < 0) r += cap;
         float out = buf[(size_t) r];
@@ -42,6 +46,8 @@ private:
     std::vector<float> buf;
     int cap = 64, w = 0, length = 64;
     float fb = 0.f, damp = 0.f, fstate = 0.f;
+    float fbT = 0.f, dampT = 0.f;            // alvos (slew no process)
+    static constexpr float slewK = 0.003f;   // ~30 ms até 99 %
 };
 
 // Allpass de Schroeder, comprimento fixo após prepare.
@@ -115,13 +121,16 @@ private:
     struct Line { std::vector<float> buf; int cap = 0, w = 0, len = 0; };
     double sr = 48000.0;
     double t60 = 2.5;
-    float dampA = 1.f;
+    float dampA = 1.f, dampAT = 1.f;
     Line lines[4];
-    float fb[4] = { 0, 0, 0, 0 }; // feedbacks do T60
+    float fb[4] = { 0, 0, 0, 0 }; // feedbacks do T60 (atuais, com slew)
+    float fbT[4] = { 0, 0, 0, 0 }; // alvos
     float dst[4] = { 0, 0, 0, 0 }; // estados lowpass por linha
     bool frozen = false;
+    static constexpr float slewK = 0.003f;
 
     void updateFb();
+    void snap() { for (int i = 0; i < 4; ++i) fb[i] = fbT[i]; dampA = dampAT; }
 
     static float readLine(const Line& l, int delay)
     {
@@ -154,10 +163,13 @@ private:
     int lenA = 2400, lenB = 2900;
     float dampA = 1.f, fA = 0.f, fB = 0.f; // coef + estados lowpass
     float decay = 0.5f;
+    float dampAT = 1.f, decayT = 0.5f;    // alvos (slew no process)
     double modPhase = 0.0;
     bool frozen = false;
+    static constexpr float slewK = 0.003f;
 
     void updateDecay();
+    void snap() { decay = decayT; dampA = dampAT; }
 
     float readInterp(const VLine& l, float delay);
 };
@@ -178,8 +190,11 @@ private:
     Fdn fdn;
     std::vector<float> ring;
     int cap = 0, w = 0;
+    double sr = 48000.0;
     float shimmerAmt = 0.35f;
     float shimState = 0.f, shimA = 0.3f, rPos = 0.f;
+    static constexpr int lapFade = 256; // crossfade anti-lap da leitura 2×
+    float readAt(float pos) const;
 };
 
 // Wrapper: pre-delay (livre+sync) → motor → width → locut/hicut → mix.
@@ -207,6 +222,8 @@ public:
     bool takeClear();
 
     // Chamar quando algo/size mudam de "escalão": fade + (só p/ algo) reset.
+    // Mantido p/ aplicação imediata (testes); o caminho normal por bloco
+    // usa setAlgo/setSize01, que adiam para o ponto silencioso.
     void noteStructuralChange(bool resetEngines);
 
     void process(juce::AudioBuffer<float>& buffer);
@@ -228,6 +245,12 @@ private:
     float width = 1.f;
     bool frozen = false;
     EnableRamp pw; // bypass por módulo
+    // Troca estrutural adiada: fade-out → aplica no silêncio → fade-in.
+    Algo pendingAlgo = Algo::Room;
+    float pendingSize = 0.5f;
+    bool pendingStructural = false, pendingReset = false, pendingSizeChange = false;
+    int appliedBucket = -1; // -1 = primeira aplicação é imediata (prepare)
+    void doSetLengths(float s); // aplica já (motores), sem fade
     juce::dsp::IIR::Filter<float> lpL, lpR, hpL, hpR;
     float lastLocut = -1.f, lastHicut = -1.f;
 };

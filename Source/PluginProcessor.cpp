@@ -7,6 +7,10 @@ DeVerbProcessor::DeVerbProcessor()
           .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       apvts(*this, nullptr, "Params", createParams())
 {
+    // v4: estado de UI (módulo selecionado) vive na árvore, fora dos 122 IDs.
+    auto ui = apvts.state.getOrCreateChildWithName("v4ui", nullptr);
+    if (! ui.hasProperty("selMod"))
+        ui.setProperty("selMod", "gate", nullptr);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout DeVerbProcessor::createParams()
@@ -317,6 +321,7 @@ void DeVerbProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     limPeak = 0.f;
     dspSr = sampleRate;
     limRelCoef = std::exp(-1.f / (0.05f * (float) sampleRate));
+    scopeFifo.reset();
 }
 
 void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -369,6 +374,28 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             buffer.getWritePointer(ch)[i] *= g;
     }
 
+    // v4 scope: mono pós input-gain (FIFO lock-free, sem alocação).
+    {
+        int free = scopeFifo.getFreeSpace();
+        if (free < n) scopeFifo.reset();
+        int s1 = 0, sz1 = 0, s2 = 0, sz2 = 0;
+        scopeFifo.prepareToWrite(n, s1, sz1, s2, sz2);
+        const float* dl = buffer.getReadPointer(0);
+        const float* dr = nCh > 1 ? buffer.getReadPointer(1) : dl;
+        auto put = [&](int start, int len, int off)
+        {
+            for (int i = 0; i < len; ++i)
+            {
+                int bi = off + i;
+                float m = (dl[bi] + dr[bi]) * 0.5f;
+                scopeBuf[(size_t)(start + i)] = juce::jlimit(-1.f, 1.f, m);
+            }
+        };
+        put(s1, sz1, 0);
+        put(s2, sz2, sz1);
+        scopeFifo.finishedWrite(sz1 + sz2);
+    }
+
     // --- Fase 5 (captura Dry): lê-se aqui porque o buffer muda a seguir.
     // Off = custo zero (nem grava); Dry grava pós-gain, PostFWD grava depois.
     const int revMode = (int) apvts.getRawParameterValue("rev_mode")->load();
@@ -400,26 +427,14 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
     gateStepUi.store(fwdGate.getCurrentStep());
     bpmUi.store((float) tempo.bpm);
+    fromHostUi.store(tempo.fromHost);
 
-    // --- Fase 3: reverb DEPOIS do delay. Mudanças estruturais (algo/size)
-    // fazem fade + reset dentro do wrapper (sem cliques).
+    // --- Fase 3: reverb DEPOIS do delay. Algo/size com fade-out-then-apply
+    // dentro do wrapper (sem cliques); T60/damp com slew interno.
     {
         int algo = (int) apvts.getRawParameterValue("fwd_verb_algo")->load();
-        float size01 = apvts.getRawParameterValue("fwd_verb_size")->load();
-        int bucket = (int) (size01 * 20.f + 0.5f);
-        if (algo != lastVerbAlgo)
-        {
-            fwdVerb.setAlgo((reverb::Reverb::Algo) algo);
-            fwdVerb.noteStructuralChange(true);
-            lastVerbAlgo = algo;
-            lastVerbSizeBucket = bucket;
-        }
-        else if (bucket != lastVerbSizeBucket)
-        {
-            fwdVerb.noteStructuralChange(false);
-            lastVerbSizeBucket = bucket;
-        }
-        fwdVerb.setSize01(size01);
+        fwdVerb.setAlgo((reverb::Reverb::Algo) algo);
+        fwdVerb.setSize01(apvts.getRawParameterValue("fwd_verb_size")->load());
         fwdVerb.setT60(apvts.getRawParameterValue("fwd_verb_decay")->load());
         fwdVerb.setDamp01(apvts.getRawParameterValue("fwd_verb_damp")->load());
         fwdVerb.setWidth01(apvts.getRawParameterValue("fwd_verb_width")->load());
@@ -542,6 +557,15 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         for (auto meta : midi)
             if (meta.getMessage().isNoteOn()) { midiThrow = true; break; }
         revEngine.renderBlock(revView, tempo, tempo.bpm, midiThrow);
+        // v4: expõe janela + cabeça de leitura para a capture-window
+        {
+            const double cb[3] = { 2.0, 3.0, 4.0 };
+            double beats = cb[juce::jlimit(0, 2, (int) RV("rev_capture"))];
+            revCapBeatsUi.store((float)beats);
+            double capLen = juce::jmax(64.0, TempoInfo::beatsToSamples(beats, tempo.bpm, dspSr));
+            double prog = (revEngine.getWritePos() - revEngine.getPlayPos()) / capLen;
+            revReadPosUi.store((float)juce::jlimit(0.0, 1.0, prog));
+        }
 
         // Gate REV (mesma ordem da FWD).
         revGate.setRate((N) RL::resolveDiscrete(lGate, (int) RV("fwd_gate_rate"), (int) RV("rev_gate_rate")));
@@ -582,23 +606,11 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             // (process() no switch em baixo)
         }
 
-        // Verb REV (estrutural próprio: algo/size com fade+reset).
+        // Verb REV (algo/size com fade-out-then-apply dentro do wrapper).
         {
             int algo = RL::resolveDiscrete(lVerb, (int) RV("fwd_verb_algo"), (int) RV("rev_verb_algo"));
             float size01 = RL::resolveContinuous(lVerb, morph, RV("fwd_verb_size"), RV("rev_verb_size"), 0.f, 1.f);
-            int bucket = (int) (size01 * 20.f + 0.5f);
-            if (algo != lastRevAlgo)
-            {
-                revVerb.setAlgo((reverb::Reverb::Algo) algo);
-                revVerb.noteStructuralChange(true);
-                lastRevAlgo = algo;
-                lastRevSizeBucket = bucket;
-            }
-            else if (bucket != lastRevSizeBucket)
-            {
-                revVerb.noteStructuralChange(false);
-                lastRevSizeBucket = bucket;
-            }
+            revVerb.setAlgo((reverb::Reverb::Algo) algo);
             revVerb.setSize01(size01);
             float dec = lVerb ? RV("fwd_verb_decay") * trimDec : RV("rev_verb_decay");
             revVerb.setT60(juce::jlimit(0.05, 30.0, (double) dec));
@@ -711,6 +723,44 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         if (nCh > 1)
             buffer.getWritePointer(1)[i] = mixed[1] * gL;
     }
+}
+
+void DeVerbProcessor::getScopeSnapshot(float* dst, int n)
+{
+    int avail = scopeFifo.getNumReady();
+    int s1 = 0, sz1 = 0, s2 = 0, sz2 = 0;
+    scopeFifo.prepareToRead(avail, s1, sz1, s2, sz2);
+    int total = sz1 + sz2;
+    int skip = juce::jmax(0, total - n);
+    int got = 0;
+    // preenche com 0 se houver menos história que o pedido
+    for (; got < n - total; ++got) dst[got] = 0.f;
+    auto copy = [&](int start, int len)
+    {
+        for (int i = 0; i < len && got < n; ++i)
+        {
+            if (skip > 0) { --skip; continue; }
+            dst[got++] = scopeBuf[(size_t)(start + i)];
+        }
+    };
+    copy(s1, sz1);
+    copy(s2, sz2);
+    scopeFifo.finishedRead(total);
+    for (; got < n; ++got) dst[got] = 0.f;
+}
+
+juce::String DeVerbProcessor::getSelMod() const
+{
+    auto ui = apvts.state.getChildWithName("v4ui");
+    if (ui.isValid())
+        return ui.getProperty("selMod", "gate").toString();
+    return "gate";
+}
+
+void DeVerbProcessor::setSelMod(const juce::String& m)
+{
+    auto ui = apvts.state.getOrCreateChildWithName("v4ui", nullptr);
+    ui.setProperty("selMod", m, nullptr);
 }
 
 juce::AudioProcessorEditor* DeVerbProcessor::createEditor()

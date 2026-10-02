@@ -81,6 +81,7 @@ private:
     int releaseLeft = 0;       // fade de saída ao libertar
     float outFade = 0.f;       // 0..1 envelope de saída
     float dryCut = 1.f;        // 1 normal, 0 em interrupt (com rampa)
+    float sliceGate = 1.f;     // chop do Slice suavizado (~3 ms, anti-clique)
     EnableRamp pw;             // bypass por módulo
 
     // Relógio p/ quantização + detetores:

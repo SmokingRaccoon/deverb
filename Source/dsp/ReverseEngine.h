@@ -32,6 +32,11 @@ public:
     void setDuckDepth(float d)       { duckDepth = juce::jlimit(0.f, 1.f, d); }
     void setThrowButton(bool b)      { throwBtn = b; }
 
+    double getPlayPos() const { return playPos; }
+    int getWritePos() const { return w; }
+    int getCapacity() const { return cap; }
+    double getCaptureBeatsVal() const { return captureBeats; }
+
     // Grava o dry (pós input-gain). Barato: chamar sempre.
     void recordBlock(const juce::AudioBuffer<float>& dry);
 

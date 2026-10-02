@@ -29,6 +29,7 @@ void Granular::reset()
     envState = 0.0;
     cooldownLeft = 0;
     lastManual = manual;
+    sliceGate = 1.f;
     activeUi.store(false);
 }
 
@@ -39,6 +40,7 @@ void Granular::setMode(Mode m)
         mode = m;
         playing = false; // trocar de modo liberta (sem cauda pendurada)
         releaseLeft = 0;
+        outFade = 0.f; // e o próximo grab arranca do silêncio (sem clique)
     }
 }
 
@@ -112,7 +114,10 @@ void Granular::process(juce::AudioBuffer<float>& buffer, const TempoInfo& tempo)
 
     double lenBeats = juce::jmax(0.125, TempoInfo::noteToBeats(lenNote)); // mín 1/32
     int xf = juce::jmax(16, (int) (xfadeMs * 0.001 * sampleRate));
+    if (playing) // o xfade nunca passa de 1/4 do loop (senão degenera)
+        xf = juce::jmax(16, juce::jmin(xf, (int) (loopLen / 4)));
     const int cooldownMax = (int) (0.05 * sampleRate);
+    const float sliceA = 1.f - std::exp(-1.f / (float) (0.003 * sampleRate)); // ~3 ms
 
     // Flanco do botão manual.
     bool manualEdge = manual && !lastManual;
@@ -224,13 +229,19 @@ void Granular::process(juce::AudioBuffer<float>& buffer, const TempoInfo& tempo)
             wetR = (vR * wNew + oR * wOld);
 
             // Slice: chop do loop à taxa do grão (flux = densidade 2..8).
+            // Suavizado (~3 ms): o corte seco por fronteira de grão = cliques.
             if (mode == Mode::Slice)
             {
                 int divs = 2 + (int) (flux * 6.99f);
                 double gphase = (playPos - loopStart) / loopLen * (double) divs;
-                float gate = ((int) gphase % 2 == 0) ? 1.f : 0.15f;
-                wetL *= gate;
-                wetR *= gate;
+                float target = ((int) gphase % 2 == 0) ? 1.f : 0.15f;
+                sliceGate += (target - sliceGate) * sliceA;
+                wetL *= sliceGate;
+                wetR *= sliceGate;
+            }
+            else
+            {
+                sliceGate += (1.f - sliceGate) * sliceA;
             }
 
             // Decay por volta (BeatRepeat e Stutter).

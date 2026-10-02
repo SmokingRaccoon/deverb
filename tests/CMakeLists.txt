@@ -44,11 +44,23 @@ target_compile_definitions(test_dsp PUBLIC
   JUCE_USE_CURL=0
 )
 
+# Fonte embutida (partilhada com o plugin).
+juce_add_binary_data(deVerbFontsTests
+  HEADER_NAME DeVerbFonts.h
+  NAMESPACE DeVerbFonts
+  SOURCES
+    ../Source/ui/fonts/NimbusSans-Regular.otf
+    ../Source/ui/fonts/NimbusSans-Bold.otf
+)
+
 # Teste ponta-a-ponta: compila o processador+editor reais e corre áudio.
 add_executable(test_chain
   test_chain.cpp
   ../Source/PluginProcessor.cpp
   ../Source/PluginEditor.cpp
+  ../Source/ui/WaterLnF.cpp
+  ../Source/ui/V4Viz.cpp
+  ../Source/ui/V4ModulePanel.cpp
   ../Source/dsp/Delay.cpp
   ../Source/dsp/Gater.cpp
   ../Source/dsp/ReverbEngine.cpp
@@ -59,6 +71,7 @@ add_executable(test_chain
 target_include_directories(test_chain PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 target_link_libraries(test_chain PRIVATE
+  deVerbFontsTests
   juce::juce_audio_utils
   juce::juce_gui_basics
   juce::juce_dsp
@@ -79,6 +92,9 @@ add_executable(test_ui
   test_ui.cpp
   ../Source/PluginProcessor.cpp
   ../Source/PluginEditor.cpp
+  ../Source/ui/WaterLnF.cpp
+  ../Source/ui/V4Viz.cpp
+  ../Source/ui/V4ModulePanel.cpp
   ../Source/dsp/Delay.cpp
   ../Source/dsp/Gater.cpp
   ../Source/dsp/ReverbEngine.cpp
@@ -89,6 +105,7 @@ add_executable(test_ui
 target_include_directories(test_ui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 target_link_libraries(test_ui PRIVATE
+  deVerbFontsTests
   juce::juce_audio_utils
   juce::juce_gui_basics
   juce::juce_dsp

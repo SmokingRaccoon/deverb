@@ -41,6 +41,8 @@ void Freeverb::prepare(double sampleRate, float sizeScale)
     }
     setLengths(sizeScale);
     updateFb();
+    for (int ch = 0; ch < 2; ++ch)
+        for (auto& c : combs[ch]) c.snap(); // arranque exato (testes/medidas)
     reset();
 }
 
@@ -122,6 +124,7 @@ void Fdn::prepare(double sampleRate, float sizeScale)
     }
     setLengths(sizeScale);
     updateFb();
+    snap(); // arranque exato
     reset();
 }
 
@@ -143,21 +146,24 @@ void Fdn::setLengths(float sizeScale)
 
 void Fdn::setT60(double t) { t60 = t; updateFb(); }
 
-void Fdn::setDampFc(float hz) { dampA = onePoleA(hz, sr); }
+void Fdn::setDampFc(float hz) { dampAT = onePoleA(hz, sr); }
 
 void Fdn::setFrozen(bool f) { frozen = f; updateFb(); }
 
 void Fdn::updateFb()
 {
     for (int i = 0; i < 4; ++i)
-        fb[i] = frozen ? 0.9995f : t60ToFb(t60, lines[i].len, sr);
+        fbT[i] = frozen ? 0.9995f : t60ToFb(t60, lines[i].len, sr);
 }
 
 void Fdn::processSample(float inL, float inR, float& outL, float& outR)
 {
+    // Slew de fb/damping: T60/damp/freeze sem cliques.
+    dampA += (dampAT - dampA) * slewK;
     float y[4];
     for (int i = 0; i < 4; ++i)
     {
+        fb[i] += (fbT[i] - fb[i]) * slewK;
         y[i] = readLine(lines[i], lines[i].len);
         dst[i] += dampA * (y[i] - dst[i]);
     }
@@ -195,6 +201,7 @@ void PlateTank::prepare(double sampleRate, float sizeScale)
     tankA.w = tankB.w = 0;
     setLengths(sizeScale);
     updateDecay();
+    snap(); // arranque exato
     reset();
 }
 
@@ -218,12 +225,12 @@ void PlateTank::setLengths(float sizeScale)
 }
 
 void PlateTank::setT60(double t) { t60 = t; updateDecay(); }
-void PlateTank::setDampFc(float hz) { dampA = onePoleA(hz, sr); }
+void PlateTank::setDampFc(float hz) { dampFc = hz; dampAT = onePoleA(hz, sr); }
 void PlateTank::setFrozen(bool f) { frozen = f; updateDecay(); }
 
 void PlateTank::updateDecay()
 {
-    decay = frozen ? 0.9995f : t60ToFb(t60, (double) (lenA + lenB), sr);
+    decayT = frozen ? 0.9995f : t60ToFb(t60, (double) (lenA + lenB), sr);
 }
 
 float PlateTank::readInterp(const VLine& l, float delay)
@@ -250,6 +257,9 @@ void PlateTank::processSample(float inL, float inR, float& outL, float& outR)
 
     float aOut = readInterp(tankA, (float) lenA);
     float bOut = readInterp(tankB, modB);
+    // Slew de decay/damping: T60/damp/freeze sem cliques.
+    decay += (decayT - decay) * slewK;
+    dampA += (dampAT - dampA) * slewK;
     fA += dampA * (aOut - fA);
     fB += dampA * (bOut - fB);
 
@@ -266,6 +276,7 @@ void PlateTank::processSample(float inL, float inR, float& outL, float& outR)
 
 void ShimmerVoice::prepare(double sampleRate, float sizeScale)
 {
+    sr = sampleRate;
     fdn.prepare(sampleRate, sizeScale);
     int ringCap = (int) (0.1 * sampleRate) + 8;
     ring.assign((size_t) ringCap, 0.f);
@@ -287,20 +298,39 @@ void ShimmerVoice::setT60(double t) { fdn.setT60(t); }
 void ShimmerVoice::setDampFc(float hz)
 {
     fdn.setDampFc(hz);
-    shimA = onePoleA(juce::jmin(hz, 6000.f), 48000.0);
+    // LP da oitava com a SR real (era 48000 fixo) e teto 4.5k: a leitura 2×
+    // dobra o conteúdo, logo o aliasing vive acima de ~Nyquist/2.
+    shimA = onePoleA(juce::jmin(hz, 4500.f), sr);
 }
 void ShimmerVoice::setFrozen(bool f) { fdn.setFrozen(f); }
+
+float ShimmerVoice::readAt(float pos) const
+{
+    while (pos < 0.f) pos += (float) cap;
+    while (pos >= (float) cap) pos -= (float) cap;
+    int i0 = (int) pos;
+    float frac = pos - (float) i0;
+    int i1 = i0 + 1;
+    if (i1 >= cap) i1 -= cap;
+    return ring[(size_t) i0] * (1.f - frac) + ring[(size_t) i1] * frac;
+}
 
 void ShimmerVoice::processSample(float inL, float inR, float& outL, float& outR)
 {
     // Leitura a 2× do anel = oitava acima (smear clássico de shimmer).
+    // A 2×, a leitura alcança a escrita a cada volta: sem proteção, esse
+    // "lap" lê fronteira escrita/não-escrita = cliques + ruído. Quando a
+    // leitura se aproxima da escrita, funde-se (equal-power) com 2ª cabeça
+    // meia-volta atrás — sempre contínua, nunca faz lap audível.
     rPos += 2.f;
     if (rPos >= (float) cap) rPos -= (float) cap;
-    int i0 = (int) rPos;
-    float frac = rPos - (float) i0;
-    int i1 = i0 + 1;
-    if (i1 >= cap) i1 -= cap;
-    float shim = ring[(size_t) i0] * (1.f - frac) + ring[(size_t) i1] * frac;
+    float dist = (float) w - rPos;
+    while (dist < 0.f) dist += (float) cap;
+    float t = juce::jlimit(0.f, 1.f, dist / (float) lapFade);
+    float wA = std::sin(t * juce::MathConstants<float>::halfPi);
+    float wB = std::cos(t * juce::MathConstants<float>::halfPi);
+    float bPos = rPos - (float) cap * 0.5f;
+    float shim = readAt(rPos) * wA + readAt(bPos) * wB;
     shimState += shimA * (shim - shimState);
 
     fdn.processSample(inL + shimState * shimmerAmt, inR + shimState * shimmerAmt, outL, outR);
@@ -331,6 +361,10 @@ void Reverb::prepare(double sampleRate, int maxBlockSize)
     smoothMix.setCurrentAndTargetValue(0.3f);
     smoothFreeze.setCurrentAndTargetValue(0.f);
     smoothFade.setCurrentAndTargetValue(1.f);
+    pendingStructural = false;
+    pendingReset = false;
+    pendingSizeChange = false;
+    appliedBucket = -1;
 
     juce::dsp::ProcessSpec spec { sr, (juce::uint32) maxBlockSize, 2 };
     lpL.prepare(spec); lpR.prepare(spec); hpL.prepare(spec); hpR.prepare(spec);
@@ -348,14 +382,52 @@ void Reverb::reset()
     std::fill(preR.begin(), preR.end(), 0.f);
 }
 
-void Reverb::setAlgo(Algo a) { algo = a; }
+void Reverb::setAlgo(Algo a)
+{
+    if (a == algo && ! pendingReset)
+        return;
+    // Adia para o ponto silencioso (ver process): sem cliques de reset.
+    pendingAlgo = a;
+    pendingStructural = true;
+    pendingReset = true;
+    smoothFade.setTargetValue(0.f);
+}
 
-void Reverb::setSize01(float s)
+void Reverb::doSetLengths(float s)
 {
     float sc = 0.5f + juce::jlimit(0.f, 1.f, s);
     freeverb.setLengths(sc);
     fdn.setLengths(sc);
     plate.setLengths(sc);
+}
+
+void Reverb::setSize01(float s)
+{
+    int bucket = (int) (juce::jlimit(0.f, 1.f, s) * 20.f + 0.5f);
+    if (appliedBucket < 0)
+    {
+        doSetLengths(s); // primeira vez: imediato (buffers vazios no prepare)
+        appliedBucket = bucket;
+        return;
+    }
+    if (bucket == appliedBucket)
+        return;
+    int step = (bucket > appliedBucket) ? (bucket - appliedBucket)
+                                        : (appliedBucket - bucket);
+    if (step > 2)
+    {
+        // Salto grande: fade-out, aplica no silêncio, fade-in.
+        pendingSize = s;
+        pendingSizeChange = true;
+        pendingStructural = true;
+        smoothFade.setTargetValue(0.f);
+    }
+    else
+    {
+        // Passo pequeno: aplica direto (vira chorus subtil, mascarado).
+        doSetLengths(s);
+    }
+    appliedBucket = bucket;
 }
 
 void Reverb::setT60(double t)
@@ -415,8 +487,18 @@ void Reverb::setTone(float locutHz, float hicutHz)
 
 void Reverb::noteStructuralChange(bool resetEngines)
 {
+    // Aplicação imediata (testes, caminhos explícitos): o caminho normal
+    // por bloco (setAlgo/setSize01) adia para o silêncio sozinho.
     if (resetEngines)
+    {
+        algo = pendingAlgo;
         reset();
+    }
+    if (pendingSizeChange)
+        doSetLengths(pendingSize);
+    pendingStructural = false;
+    pendingReset = false;
+    pendingSizeChange = false;
     smoothFade.setCurrentAndTargetValue(0.f);
     smoothFade.setTargetValue(1.f);
 }
@@ -436,6 +518,24 @@ void Reverb::process(juce::AudioBuffer<float>& buffer)
         float frz = smoothFreeze.getNextValue();
         float fade = smoothFade.getNextValue();
         float dry = 1.f - mix;
+
+        // Troca estrutural adiada: aplica no silêncio e volta a abrir.
+        if (pendingStructural && fade <= 0.002f)
+        {
+            if (pendingReset)
+            {
+                algo = pendingAlgo;
+                reset();
+            }
+            if (pendingSizeChange)
+            {
+                doSetLengths(pendingSize);
+                pendingSizeChange = false;
+            }
+            pendingStructural = false;
+            pendingReset = false;
+            smoothFade.setTargetValue(1.f);
+        }
 
         float inL = buffer.getSample(0, i);
         float inR = (nCh > 1) ? buffer.getSample(1, i) : inL;

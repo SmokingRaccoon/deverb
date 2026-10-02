@@ -963,6 +963,68 @@ int mainVerb()
         CHECK(peak < 4.0f && peak > 0.01f, "Shimmer estável e audível (pico %f)", peak);
     }
 
+    // --- 10b. Shimmer sem laps: cauda suave a 48k e 44.1k ---
+    // A leitura 2× alcança a escrita a cada volta; sem crossfade isso dá
+    // cliques periódicos. Mede-se o maior salto amostra-a-amostra já na
+    // cauda decaída (2–6 s), onde a cauda legítima é suave.
+    for (double sr : { 48000.0, 44100.0 })
+    {
+        reverb::Reverb s;
+        s.prepare(sr, 512);
+        s.setAlgo(reverb::Reverb::Algo::Shimmer);
+        s.noteStructuralChange(true);
+        s.setSize01(0.5f);
+        s.setT60(2.0);
+        s.setDamp01(0.3f);
+        s.setWidth01(1.f);
+        s.setPredelaySamples(0);
+        s.setFrozen(false);
+        s.setMix(1.f);
+        s.setTone(20.f, 20000.f);
+        auto irs = renderIR(s, 6.0, sr);
+        int from = (int) (2.0 * sr);
+        float maxStep = 0.f, peak = 0.f;
+        for (int i = from + 1; i < (int) irs.size(); ++i)
+        {
+            maxStep = juce::jmax(maxStep, std::abs(irs[(size_t) i] - irs[(size_t) i - 1]));
+            peak = juce::jmax(peak, std::abs(irs[(size_t) i]));
+        }
+        CHECK(peak > 0.005f, "shimmer audível @ %g Hz (pico cauda %f)", sr, peak);
+        CHECK(maxStep < 0.15f, "shimmer sem cliques de lap @ %g Hz (maxStep %f)", sr, maxStep);
+    }
+
+    // --- 10c. Mudar decay/damp a meio da cauda não clica (slew interno) ---
+    {
+        reverb::Reverb r;
+        setupVerb(r, reverb::Reverb::Algo::Hall, 1.0);
+        juce::AudioBuffer<float> blk(2, 512);
+        blk.clear();
+        blk.setSample(0, 0, 1.0f);
+        r.process(blk);
+        float maxStep = 0.f, prevL = 0.f, prevR = 0.f;
+        for (int b = 0; b < 200; ++b) // ~2.1 s; mede a partir de ~0.1 s
+        {
+            if (b == 20) { r.setT60(6.0); r.setDamp01(0.8f); } // muda com cauda quente
+            blk.setSize(2, 512, false, false, true);
+            blk.clear();
+            r.process(blk);
+            if (b < 10)
+            {
+                prevL = blk.getSample(0, 511);
+                prevR = blk.getSample(1, 511);
+                continue; // fora da janela de medida (transiente inicial)
+            }
+            for (int i = 0; i < 512; ++i)
+            {
+                float l = blk.getSample(0, i), rr = blk.getSample(1, i);
+                maxStep = juce::jmax(maxStep, std::abs(l - prevL));
+                maxStep = juce::jmax(maxStep, std::abs(rr - prevR));
+                prevL = l; prevR = rr;
+            }
+        }
+        CHECK(maxStep < 0.4f, "decay/damp a meio sem clique (maxStep %f)", maxStep);
+    }
+
     // --- 11. Troca de algoritmo a meio não explode ---
     {
         reverb::Reverb r;

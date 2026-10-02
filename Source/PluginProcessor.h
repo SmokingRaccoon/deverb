@@ -44,8 +44,16 @@ public:
     // Leitura p/ UI (Timer): passo atual do gate e BPM efetivo.
     int getGateStep() const { return gateStepUi.load(); }
     float getUiBpm() const  { return bpmUi.load(); }
+    bool isTempoFromHost() const { return fromHostUi.load(); }
     // Leitura p/ UI (Timer): granular ativo ou não.
     bool isGranularActive() const { return granActiveUi.load(); }
+
+    // --- v4 Espelho de Agua: dados vivos + estado de UI ---
+    void getScopeSnapshot(float* dst, int n); // FIFO lock-free, mono -1..1
+    float getRevCapBeatsUi() const { return revCapBeatsUi.load(); }
+    float getRevReadPosUi() const { return revReadPosUi.load(); } // 0..1 na janela
+    juce::String getSelMod() const;
+    void setSelMod(const juce::String& m);
 
 private:
     TempoInfo tempo;   // relógio central (lido por todos os módulos)
@@ -53,7 +61,6 @@ private:
     Gater fwdGate;     // Fase 2: trance gate antes do delay
     reverb::Reverb fwdVerb; // Fase 3: reverb depois do delay
     Granular fwdGran;       // Fase 4: granular/glitch por último
-    int lastVerbAlgo = -1, lastVerbSizeBucket = -1;
     // --- Fase 5: motor REV (cadeia gémea + leitor reverso) ---
     ReverseEngine revEngine;
     Gater revGate;
@@ -62,7 +69,6 @@ private:
     Granular revGran;
     juce::AudioBuffer<float> revBuf; // scratch stereo p/ o caminho REV
     juce::AudioBuffer<float> fwdBuf; // scratch: cadeia FWD (p/ XFADE/order)
-    int lastRevAlgo = -1, lastRevSizeBucket = -1;
     // XFADE: ganhos suavizados por engine + fase de beats interna.
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> xfFwd, xfRev, smoothRevMix;
     double procBeats = 0.0; // relógio livre (standalone / fallback)
@@ -73,6 +79,13 @@ private:
     std::atomic<bool> granActiveUi { false };
     std::atomic<int> gateStepUi { 0 };
     std::atomic<float> bpmUi { 120.f };
+    std::atomic<bool> fromHostUi { false };
+    // v4 scope FIFO (escrita no audio thread, leitura na message thread)
+    static constexpr int scopeCap = 2048;
+    std::vector<float> scopeBuf { std::vector<float>((size_t)scopeCap, 0.f) };
+    juce::AbstractFifo scopeFifo { scopeCap };
+    std::atomic<float> revCapBeatsUi { 2.f };
+    std::atomic<float> revReadPosUi { 0.f };
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothInput, smoothMaster;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DeVerbProcessor)
 };
