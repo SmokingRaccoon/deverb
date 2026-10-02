@@ -88,9 +88,10 @@ jobs:
 
       # O runner mac tem WindowServer: o test_ui corre direto e diz-nos se
       # o crash do pluginval/Editor é do editor em si ou só do hosting VST3.
+      # Sob lldb --batch para a stack real ficar no log em caso de estoiro.
       - name: Run UI session tests (macOS)
         if: runner.os == 'macOS'
-        run: ./tests/build/test_ui
+        run: lldb --batch -o "run" -o "bt all" -o "quit" -- ./tests/build/test_ui
 
       - name: pluginval
         run: |
@@ -118,6 +119,9 @@ jobs:
       - name: Dump crash reports (macOS, em falha)
         if: failure() && runner.os == 'macOS'
         run: |
+          # O crashreportd demora uns segundos a escrever o .ips; esperar.
+          sleep 25
+          ls -lt ~/Library/Logs/DiagnosticReports/ 2>/dev/null | head -12 || echo "sem DiagnosticReports"
           python3 - <<'PYEOF'
           import json, glob, os
           pat = os.path.expanduser('~/Library/Logs/DiagnosticReports/*.ips')

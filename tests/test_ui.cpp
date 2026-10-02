@@ -85,6 +85,8 @@ static bool noisyFinite(DeVerbProcessor& p)
 
 int main()
 {
+    // Sem buffer: se houver segfault, o log mostra exatamente onde parou.
+    setvbuf(stdout, nullptr, _IONBF, 0);
     juce::ScopedJuceInitialiser_GUI gui;
     DeVerbProcessor proc;
     proc.prepareToPlay(48000.0, 512);
