@@ -86,6 +86,12 @@ jobs:
         if: runner.os == 'Linux'
         run: xvfb-run -a ./tests/build/test_ui
 
+      # O runner mac tem WindowServer: o test_ui corre direto e diz-nos se
+      # o crash do pluginval/Editor é do editor em si ou só do hosting VST3.
+      - name: Run UI session tests (macOS)
+        if: runner.os == 'macOS'
+        run: ./tests/build/test_ui
+
       - name: pluginval
         run: |
           if [ "${{ runner.os }}" = "Linux" ]; then
@@ -107,7 +113,47 @@ jobs:
             "$PV" --validate "$VST3" --strictness-level 5
           fi
 
-      # (removido o step de debug gdb: causa encontrada — ver nota no step pluginval)
+      # Em falha no mac: despeja os crash reports (.ips) dos nossos processos
+      # com a stack da thread que estoirou (para diagnosticar sem mac local).
+      - name: Dump crash reports (macOS, em falha)
+        if: failure() && runner.os == 'macOS'
+        run: |
+          python3 - <<'PYEOF'
+          import json, glob, os
+          pat = os.path.expanduser('~/Library/Logs/DiagnosticReports/*.ips')
+          files = sorted(glob.glob(pat), key=os.path.getmtime, reverse=True)
+          print('ficheiros .ips recentes:', len(files))
+          shown = 0
+          for f in files:
+              base = os.path.basename(f)
+              if not any(k in base for k in ('pluginval', 'test_ui', 'deVerb', 'auval')):
+                  continue
+              try:
+                  d = json.load(open(f))
+              except Exception as e:
+                  print('=====', base, '-> ilegivel:', e)
+                  continue
+              print('=====', base)
+              ex = d.get('exception') or {}
+              print('  excepcao:', ex.get('type'), '| sinal:', ex.get('signal'),
+                    '| subtype:', ex.get('subtype'), '| codes:', ex.get('codes'))
+              print('  razao:', (d.get('termination') or {}).get('reason'))
+              threads = d.get('threads') or []
+              crashed = [t for t in threads if t.get('triggered')]
+              if not crashed and isinstance(d.get('faultingThread'), int):
+                  crashed = [t for t in threads if t.get('id') == d.get('faultingThread')]
+              for t in crashed[:1]:
+                  for fr in (t.get('frames') or [])[:45]:
+                      sym = fr.get('symbol') or fr.get('imageOffset')
+                      src = fr.get('sourceFile') or ''
+                      ln = fr.get('sourceLine') or ''
+                      print('   ', fr.get('image'), '|', sym, ('| ' + str(src) + ':' + str(ln)) if src else '')
+              shown += 1
+              if shown >= 3:
+                  break
+          if shown == 0:
+              print('sem .ips dos nossos processos')
+          PYEOF
 
       - name: auval (macOS, AU)
         if: runner.os == 'macOS'
