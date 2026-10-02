@@ -88,10 +88,17 @@ jobs:
 
       # O runner mac tem WindowServer: o test_ui corre direto e diz-nos se
       # o crash do pluginval/Editor é do editor em si ou só do hosting VST3.
-      # Sob lldb --batch para a stack real ficar no log em caso de estoiro.
+      # lldb só em falha (o `bt` com processo já saído dava exit 1 espúrio).
       - name: Run UI session tests (macOS)
         if: runner.os == 'macOS'
-        run: lldb --batch -o "run" -o "bt all" -o "quit" -- ./tests/build/test_ui
+        run: |
+          ./tests/build/test_ui
+          CODE=$?
+          if [ $CODE -ne 0 ]; then
+            echo "test_ui falhou (exit $CODE); a repetir sob lldb para a stack:"
+            lldb --batch -o "run" -o "bt all" -o "quit" -- ./tests/build/test_ui || true
+          fi
+          exit $CODE
 
       - name: pluginval
         run: |
@@ -111,8 +118,14 @@ jobs:
             # pluginval incorpora o editor via XEmbed e rebenta sem display.
             xvfb-run -a "$PV" --validate "$VST3" --strictness-level 5
           else
-            # Sob lldb para a stack real ficar no log se o teste Editor estoirar.
-            lldb --batch -o "run" -o "bt all" -o "quit" -- "$PV" --validate "$VST3" --strictness-level 5
+            # lldb só em falha (o `bt` com processo já saído dava exit 1 espúrio).
+            "$PV" --validate "$VST3" --strictness-level 5
+            CODE=$?
+            if [ $CODE -ne 0 ]; then
+              echo "pluginval falhou (exit $CODE); a repetir sob lldb para a stack:"
+              lldb --batch -o "run" -o "bt all" -o "quit" -- "$PV" --validate "$VST3" --strictness-level 5 || true
+            fi
+            exit $CODE
           fi
 
       # Em falha no mac: despeja os crash reports (.ips) dos nossos processos
