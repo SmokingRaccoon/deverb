@@ -54,10 +54,10 @@ public:
         i = juce::jlimit(0, labels_.size() - 1, i);
         if (param_ != nullptr && notify)
         {
-            if (auto* c = dynamic_cast<juce::AudioParameterChoice*>(param_))
+            if (dynamic_cast<juce::AudioParameterChoice*>(param_) != nullptr)
                 attach->setValueAsCompleteGesture((float)i);
             else
-                attach->setValueAsCompleteGesture(param_->convertTo0to1((float)i));
+                jassertfalse; // segs só ligam a Choice (evita normalizado no sítio errado)
         }
         else
         {

@@ -62,6 +62,7 @@ DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
     juce::StringArray presetNames;
     for (auto& pr : deVerbFactoryPresets()) presetNames.add(pr.name);
     auto* ps = new V4Stepper(nullptr, presetNames, {}, {});
+    ps->setPlaceholder("Preset…");
     ps->setBounds(508, 8, 272, 28);
     ps->onCustomPick = [this](int i)
     {

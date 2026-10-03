@@ -19,7 +19,11 @@ public:
         setMouseCursor(juce::MouseCursor::UpDownResizeCursor);
     }
 
-    void mouseDown(const juce::MouseEvent& e) override { dragY_ = e.position.y; dragV_ = val_; }
+    void mouseDown(const juce::MouseEvent& e) override
+    {
+        dragY_ = e.position.y; dragV_ = val_;
+        if (attach) attach->beginGesture(); // equilibra o endGesture do mouseUp
+    }
     void mouseDrag(const juce::MouseEvent& e) override
     {
         if (param_ == nullptr) return;

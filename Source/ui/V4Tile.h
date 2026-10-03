@@ -1,4 +1,5 @@
 #pragma once
+#include <cmath>
 #include <juce_gui_basics/juce_gui_basics.h>
 
 // Pedra v4 (.tile): seleciona o módulo.
@@ -28,11 +29,20 @@ public:
                          juce::Rectangle<int>(56, 4, getWidth() - 60, 14),
                          juce::Justification::centredLeft, 1);
 
-        // objeto (caixa 56,22,44,22)
+        // objeto (caixa 56,22,44,22). Gate/verb/gran levam escala 0.86
+        // centrada para respirar do meridiano e das teclas (o delay, mais
+        // delicado, fica a 1.0).
+        float sc = (mod_ == "delay") ? 1.f : 0.86f;
+        g.saveState();
+        if (sc != 1.f)
+            g.addTransform(juce::AffineTransform::scale(sc, sc, 78.f, 33.f));
         shapes(g, 56.f, 22.f, sel ? accent_ : ink, sel);
+        g.restoreState();
         // reflexo: mesma caixa espelhada para 44..66 (y -> 88-y)
         g.saveState();
         g.addTransform(juce::AffineTransform::verticalFlip(88.f));
+        if (sc != 1.f)
+            g.addTransform(juce::AffineTransform::scale(sc, sc, 78.f, 55.f));
         g.setOpacity(sel ? 0.55f : 0.42f);
         shapes(g, 56.f, 22.f, sel ? accent_ : paper, sel);
         g.restoreState();
@@ -60,15 +70,30 @@ private:
         }
         else if (mod_ == "delay")
         {
+            // 3 arcos com a barriga para oeste (mockup), em coordenadas de
+            // ecrã explícitas (0°=este, y para baixo): 100°..260°.
             for (int k = 0; k < 3; ++k)
             {
                 float cx = x + 9 + k * 12, cy = y + 11;
                 float rad = 11 - k * 3;
                 juce::Path p;
-                p.addArc(cx - rad, cy - rad, rad * 2, rad * 2, -1.1f, 1.1f, true);
+                for (int s = 0; s <= 20; ++s)
+                {
+                    float a = (100.f + s * 8.f) * juce::MathConstants<float>::pi / 180.f;
+                    juce::Point<float> pt(cx + std::cos(a) * rad, cy + std::sin(a) * rad);
+                    if (s == 0) p.startNewSubPath(pt);
+                    else p.lineTo(pt);
+                }
                 if (! sel)
                     g.setColour(main.withAlpha(k == 0 ? 1.f : k == 1 ? 0.6f : 0.35f));
-                if (sel && k == 0) g.fillPath(p);
+                if (sel && k == 0)
+                {
+                    // pastilha cheia à esquerda + contorno
+                    juce::Path fill = p;
+                    fill.lineTo(cx, cy);
+                    fill.closeSubPath();
+                    g.fillPath(fill);
+                }
                 else g.strokePath(p, juce::PathStrokeType(k == 0 ? 2.f : 1.5f));
             }
         }

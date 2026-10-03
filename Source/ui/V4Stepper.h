@@ -49,9 +49,14 @@ public:
     int getIndex() const { return idx_; }
     void setRole(const juce::String& r) { role_ = r; }
 
+    // Texto neutro antes da primeira escolha (só steppers sem param).
+    void setPlaceholder(const juce::String& p) { placeholder_ = p; repaint(); }
+
     void step(int d)
     {
         if (tethered_) { if (onTetherClick) onTetherClick(this); return; }
+        custom_ = false;
+        touched_ = true;
         int ni = (idx_ + d + options_.size() * 4) % juce::jmax(1, options_.size());
         applyIndex(ni);
     }
@@ -59,25 +64,27 @@ public:
     void applyIndex(int ni)
     {
         ni = juce::jlimit(0, options_.size() - 1, ni);
+        custom_ = false;
+        touched_ = true;
         if (param_ == nullptr) { idx_ = ni; repaint(); if (onCustomPick) onCustomPick(ni); return; }
         if (!bits_.empty())
         {
-            int b = bits_[(size_t)ni];
-            attach->setValueAsCompleteGesture(param_->convertTo0to1((float)b));
+            // bits SÃO o valor desnormalizado do Int (0..65535): passar direto.
+            // (convertTo0to1 aqui metia ~0 e matava o pattern.)
+            attach->setValueAsCompleteGesture((float)bits_[(size_t)ni]);
         }
-        else if (auto* c = dynamic_cast<juce::AudioParameterChoice*>(param_))
+        else if (dynamic_cast<juce::AudioParameterChoice*>(param_) != nullptr)
             attach->setValueAsCompleteGesture((float)ni);
-        else if (auto* ip = dynamic_cast<juce::AudioParameterInt*>(param_))
-            attach->setValueAsCompleteGesture(param_->convertTo0to1((float)ni));
         else
-            attach->setValueAsCompleteGesture(param_->convertTo0to1((float)ni));
+            jassertfalse; // stepper só suporta Choice, bits ou sem-param
     }
 
     std::function<void(int)> onCustomPick; // para factory-preset (sem param)
 
     void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails& w) override
     {
-        if (std::abs(w.deltaY) > 0.001f) step(w.deltaY > 0 ? -1 : +1);
+        // mockup: roda para baixo avança (+1), como nos dials (up = +).
+        if (std::abs(w.deltaY) > 0.001f) step(w.deltaY > 0 ? +1 : -1);
     }
 
     void resized() override
@@ -104,7 +111,15 @@ public:
         else g.drawRoundedRectangle(r, 3.f, 1.f);
         setAlpha(tethered_ ? 0.62f : 1.f);
         int shown = (tethered_ && fwdIdx_ >= 0) ? fwdIdx_ : idx_;
-        juce::String txt = options_[juce::jlimit(0, options_.size()-1, shown)];
+        // Placeholder (preset global, antes de escolher) e Custom (pattern
+        // editado à mão/pelo RANDOM fora da lista de fábrica).
+        juce::String txt;
+        if (!touched_ && param_ == nullptr && placeholder_.isNotEmpty())
+            txt = placeholder_;
+        else if (custom_)
+            txt = "Custom…";
+        else
+            txt = options_[juce::jlimit(0, options_.size()-1, shown)];
         g.setColour(fg);
         g.setFont(juce::Font(juce::FontOptions("DejaVu Sans Mono", 11.f, juce::Font::plain)));
         if (cap_.isNotEmpty())
@@ -142,12 +157,14 @@ private:
     {
         if (param_ == nullptr) return;
         int ni = 0;
+        custom_ = false;
         if (!bits_.empty())
         {
             int b = (int)std::round(param_->convertFrom0to1(param_->getValue()));
-            ni = 0;
+            ni = -1;
             for (size_t i = 0; i < bits_.size(); ++i)
                 if (bits_[i] == b) { ni = (int)i; break; }
+            if (ni < 0) { custom_ = true; ni = idx_; }
         }
         else if (auto* c = dynamic_cast<juce::AudioParameterChoice*>(param_))
             ni = c->getIndex();
@@ -164,6 +181,8 @@ private:
     juce::TextButton prev_ { "" }, next_ { "" };
     std::unique_ptr<juce::ParameterAttachment> attach;
     bool dark_ = false;
+    bool custom_ = false, touched_ = false;
+    juce::String placeholder_;
     int idx_ = 0;
     bool tethered_ = false;
     int fwdIdx_ = -1;

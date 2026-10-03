@@ -153,11 +153,16 @@ void WaterLnF::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int 
         g.drawEllipse(p.x - 3.f, p.y - 3.f, 6.f, 6.f, 1.5f);
     }
 
-    // etiqueta colada ao knob (faixa própria, sem colidir com anel/caixa)
+    // etiqueta colada ao knob (faixa própria, sem colidir com anel/caixa).
+    // O XL (MORPH) não leva etiqueta interna: sobrepunha-se ao anel; o valor
+    // e o nome vivem no readout ao lado.
     juce::String lb = slider.getName();
     g.setColour(lab);
     g.setFont(juce::Font(juce::FontOptions(10.f, juce::Font::bold)));
-    if (isMer)
+    if (variant == "xl")
+    {
+    }
+    else if (isMer)
     {
         g.drawFittedText(lb, juce::Rectangle<int>((int)r.getX(), (int)r.getY(), (int)r.getWidth(), 12),
                          juce::Justification::centred, 1);
