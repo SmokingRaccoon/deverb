@@ -112,7 +112,7 @@ public:
         if (cap_.isNotEmpty())
         {
             g.setColour(lab);
-            g.setFont(10.f);
+            g.setFont(juce::Font(juce::FontOptions(10.f, juce::Font::bold)));
             g.drawFittedText(cap_, juce::Rectangle<int>(0, 0, capWidth(), r.getHeight()).toNearestInt(),
                              juce::Justification::centred, 1);
         }

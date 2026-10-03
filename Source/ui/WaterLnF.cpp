@@ -46,9 +46,11 @@ void WaterLnF::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int 
 
     float cx = r.getCentreX();
     float cy = r.getY() + (isMer ? 14.f : 0.f) + ringD * 0.5f;
-    float ghost01 = props.contains("ghost") ? (float)props["ghost"] : sliderPos;
-    float eff01 = props.contains("eff") ? (float)props["eff"] : sliderPos;
     bool linked = props.contains("linked") ? (bool)props["linked"] : false;
+    // Ticks/dot seguem a agulha (espaço COM skew): sem link, a posição viva
+    // do slider; com link, o efetivo resolvido (já com skew).
+    float ghost01 = props.contains("ghost") ? (float)props["ghost"] : sliderPos;
+    float eff01 = linked && props.contains("geff") ? (float)props["geff"] : sliderPos;
     juce::Colour acc = juce::Colour(0xff16171A);
     if (props.contains("accent"))
         acc = juce::Colour((juce::uint32)(long long)props["accent"]);
@@ -64,19 +66,31 @@ void WaterLnF::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int 
         float v = (float) i / 20.f;
         auto p0 = tickPt(v, ringD * 0.5f - 5.f);
         auto p1 = tickPt(v, ringD * 0.5f - 1.f);
-        // aceso até ao efetivo
-        g.setColour(i <= eff01 * 20.f ? fg : lab.withAlpha(0.45f));
+        // aceso até ao efetivo; no meridiano, ticks água e acesos por metade
+        bool lit = i <= eff01 * 20.f;
+        if (isMer)
+        {
+            bool above = (p0.y + p1.y) * 0.5f < cy;
+            g.setColour(lit ? (above ? ink : paper) : water.withAlpha(0.55f));
+        }
+        else
+            g.setColour(lit ? fg : lab.withAlpha(0.45f));
         g.drawLine(juce::Line<float>(p0, p1), 1.8f);
     }
 
     // disco (no REV inverte: papel sobre tinta, como no mockup)
     if (isMer)
     {
-        // cortado pela linha de agua: metade tinta / metade papel
+        // UM círculo, cortado pela linha de água com clip (duas elipses
+        // deixavam costura visível nas bordas).
         g.setColour(ink);
-        g.fillEllipse(cx - discD/2, cy - discD/2, discD, discD/2);
+        g.fillEllipse(cx - discD/2, cy - discD/2, discD, discD);
+        g.saveState();
+        g.reduceClipRegion((int)(cx - discD), (int)cy,
+                           (int)(discD * 2), (int)(discD + 4));
         g.setColour(paper);
-        g.fillEllipse(cx - discD/2, cy, discD, discD/2);
+        g.fillEllipse(cx - discD/2, cy - discD/2, discD, discD);
+        g.restoreState();
         g.setColour(water);
         g.drawEllipse(cx - discD/2, cy - discD/2, discD, discD, 1.f);
     }
@@ -89,25 +103,38 @@ void WaterLnF::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int 
     auto needleLine = [&](float v01, juce::Colour c, float w, bool hollow)
     {
         float a = ang(v01) - juce::MathConstants<float>::halfPi;
-        juce::Point<float> tip(cx + std::cos(a) * (discD*0.5f - 4.f),
-                               cy + std::sin(a) * (discD*0.5f - 4.f));
+        float len = discD * 0.5f - 4.f;
+        juce::Point<float> tip(cx + std::cos(a) * len, cy + std::sin(a) * len);
         g.setColour(c);
-        g.drawLine(juce::Line<float>({cx, cy}, tip), hollow ? w + 2.f : w);
+        if (hollow)
+        {
+            // fantasma oca: contorno fino (mockup: anel vazado na cor do fundo)
+            float px = -std::sin(a) * 2.5f, py = std::cos(a) * 2.5f;
+            juce::Point<float> c0(cx, cy);
+            g.drawLine(juce::Line<float>(c0 + juce::Point<float>(px, py),
+                                         tip + juce::Point<float>(px, py)), 1.5f);
+            g.drawLine(juce::Line<float>(c0 - juce::Point<float>(px, py),
+                                         tip - juce::Point<float>(px, py)), 1.5f);
+            g.drawLine(juce::Line<float>(tip + juce::Point<float>(px, py),
+                                         tip - juce::Point<float>(px, py)), 1.5f);
+        }
+        else
+            g.drawLine(juce::Line<float>({cx, cy}, tip), w);
     };
 
     if (linked)
         needleLine(ghost01, bg, 5.f, true); // fantasma oca, cor do fundo
     if (isMer)
     {
-        // agulha em 2 passes com clip (difference do mockup): tinta em cima,
-        // papel em baixo — sempre legível nas duas metades.
+        // agulha em 2 passes com clip (difference do mockup): o disco de
+        // cima é tinta logo a agulha é papel; em baixo é ao contrário.
         g.saveState();
         g.reduceClipRegion((int)cx - 60, (int)(cy - discD/2) - 4, 120, (int)(discD/2) + 4);
-        needleLine(sliderPos, ink, 3.f, false);
+        needleLine(sliderPos, paper, 3.f, false);
         g.restoreState();
         g.saveState();
         g.reduceClipRegion((int)cx - 60, (int)cy, 120, (int)(discD/2) + 4);
-        needleLine(sliderPos, paper, 3.f, false);
+        needleLine(sliderPos, ink, 3.f, false);
         g.restoreState();
     }
     else
@@ -115,21 +142,21 @@ void WaterLnF::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int 
         needleLine(sliderPos, bg, 2.f, false);
     }
 
-    // ponto = efetivo, na cor do modulo, com halo da cor do fundo
+    // ponto = efetivo, na cor do modulo, com halo que contrasta onde cai
     {
         float a = ang(eff01) - juce::MathConstants<float>::halfPi;
         float rr = ringD * 0.5f + 3.f;
         juce::Point<float> p(cx + std::cos(a) * rr, cy + std::sin(a) * rr);
         g.setColour(acc);
         g.fillEllipse(p.x - 3.f, p.y - 3.f, 6.f, 6.f);
-        g.setColour(bg);
+        g.setColour(isMer ? (p.y < cy ? paper : ink) : bg);
         g.drawEllipse(p.x - 3.f, p.y - 3.f, 6.f, 6.f, 1.5f);
     }
 
     // etiqueta colada ao knob (faixa própria, sem colidir com anel/caixa)
     juce::String lb = slider.getName();
     g.setColour(lab);
-    g.setFont(10.f);
+    g.setFont(juce::Font(juce::FontOptions(10.f, juce::Font::bold)));
     if (isMer)
     {
         g.drawFittedText(lb, juce::Rectangle<int>((int)r.getX(), (int)r.getY(), (int)r.getWidth(), 12),

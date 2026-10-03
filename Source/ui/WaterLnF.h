@@ -86,27 +86,32 @@ public:
         bool dark = b.getProperties().contains("dark");
         auto fg = dark ? paper : ink;
         auto lab = dark ? labI : labP;
+        // Passos em grupos de 4 (convenção 808/909): tons alternados.
+        auto bg3 = dark ? ink3 : paper3;
+        auto bg2 = dark ? ink2 : paper2;
         auto acc = b.findColour(juce::TextButton::buttonOnColourId);
         auto onTx = b.findColour(juce::TextButton::textColourOnId);
         bool tether = b.getProperties().contains("tether");
         auto playBar = [&] {
+            // mockup .stp.play: barra sempre na cor do fg
             if (b.getProperties().contains("play"))
+            {
+                g.setColour(fg);
                 g.fillRect(juce::Rectangle<float>(r.getX(), r.getBottom() - 4.f,
                                                   r.getWidth(), 3.f));
+            }
         };
         if (on)
         {
             g.setColour(acc);
-            g.fillRoundedRectangle(r, 3.f);
+            g.fillRoundedRectangle(r, 2.f);
             g.setColour(onTx);
             playBar();
         }
         else
         {
-            g.setColour(juce::Colour(0x00000000));
-            g.fillRoundedRectangle(r, 3.f);
-            g.setColour(lab);
-            g.drawRoundedRectangle(r, 3.f, 1.f);
+            g.setColour(b.getProperties().contains("g1") ? bg2 : bg3);
+            g.fillRoundedRectangle(r, 2.f);
             g.setColour(fg);
             playBar();
         }
@@ -161,7 +166,7 @@ public:
         if (b.getProperties().contains("stepnum"))
             g.setFont(juce::Font(juce::FontOptions("DejaVu Sans Mono", 10.f, juce::Font::plain)));
         else
-            g.setFont(10.f);
+            g.setFont(juce::Font(juce::FontOptions(10.f, juce::Font::bold)));
         g.drawFittedText(b.getButtonText(), b.getLocalBounds(),
                          juce::Justification::centred, 1);
     }

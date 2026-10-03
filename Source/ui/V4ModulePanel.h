@@ -41,7 +41,7 @@ private:
     juce::String pid(const juce::String& base) const;
     juce::RangedAudioParameter* par(const juce::String& id) const;
 
-    struct DialEntry { V4Dial* dial = nullptr; juce::String paramId; juce::String base; std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> att; float lo=0, hi=1; };
+    struct DialEntry { V4Dial* dial = nullptr; juce::String paramId; juce::String base; std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> att; float lo=0, hi=1; juce::NormalisableRange<float> nr; bool hasRange = false; };
     struct SegEntry { V4Seg* seg = nullptr; juce::String paramId; };
     struct StepEntry { V4Stepper* st = nullptr; juce::String paramId; };
     struct KeyEntry { V4Key* key = nullptr; juce::String paramId; };

@@ -51,11 +51,12 @@ public:
         g.setColour(juce::Colour(0xff8D8A82).withAlpha(0.6f));
         g.drawRoundedRectangle(r, 3.f, 1.f);
         g.setColour(juce::Colour(0xff55544F));
-        g.setFont(10.f);
+        g.setFont(juce::Font(juce::FontOptions(10.f, juce::Font::bold)));
         g.drawFittedText(cap_, juce::Rectangle<int>(0, 0, 52, (int)r.getHeight()),
                          juce::Justification::centred, 1);
+        g.drawLine(52.f, 4.f, 52.f, r.getHeight() - 4.f);
         g.setColour(juce::Colour(0xff16171A));
-        g.setFont(juce::Font(juce::FontOptions(13.f, juce::Font::plain)));
+        g.setFont(juce::Font(juce::FontOptions("DejaVu Sans Mono", 13.f, juce::Font::plain)));
         g.drawFittedText(juce::String(val_, 1), juce::Rectangle<int>(52, 0, (int)r.getWidth()-52, (int)r.getHeight()),
                          juce::Justification::centred, 1);
     }

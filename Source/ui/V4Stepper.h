@@ -106,15 +106,15 @@ public:
         int shown = (tethered_ && fwdIdx_ >= 0) ? fwdIdx_ : idx_;
         juce::String txt = options_[juce::jlimit(0, options_.size()-1, shown)];
         g.setColour(fg);
-        g.setFont(11.f);
+        g.setFont(juce::Font(juce::FontOptions("DejaVu Sans Mono", 11.f, juce::Font::plain)));
         if (cap_.isNotEmpty())
         {
-            g.setFont(10.f);
+            g.setFont(juce::Font(juce::FontOptions(10.f, juce::Font::bold)));
             g.setColour(lab);
             g.drawFittedText(cap_, juce::Rectangle<int>(28, 0, 52, r.getHeight()).toNearestInt(),
                              juce::Justification::centredLeft, 1);
             g.setColour(fg);
-            g.setFont(juce::Font(juce::FontOptions(11.f, juce::Font::plain)));
+            g.setFont(juce::Font(juce::FontOptions("DejaVu Sans Mono", 11.f, juce::Font::plain)));
             g.drawFittedText(txt, juce::Rectangle<int>(80, 0, r.getWidth()-108, r.getHeight()).toNearestInt(),
                              juce::Justification::centred, 1);
         }

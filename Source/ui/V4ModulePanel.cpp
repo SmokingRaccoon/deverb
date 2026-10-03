@@ -20,7 +20,8 @@ juce::String fmtFor(const juce::String& mod, const juce::String& base)
 {
     if (base == "time" || base == "predelay") return "ms";
     if (base == "xfade") return "ms1";
-    if (base == "damp" || base == "locut" || base == "hicut") return "hz";
+    if (base == "damp") return mod == "delay" ? "hz" : "n2"; // verb damp é 0..1
+    if (base == "locut" || base == "hicut") return "hz";
     if (base == "wow_rate") return "hz1";
     if (base == "wow_depth") return "ms1";
     if (base == "decay" && mod == "verb") return "s";
@@ -64,6 +65,8 @@ V4ModulePanel::V4ModulePanel(DeVerbProcessor& proc, const juce::String& engine, 
             if (engine == "rev")
                 b->getProperties().set("dark", true);
             b->getProperties().set("stepnum", true);
+            if (((i / 4) % 2) == 1)
+                b->getProperties().set("g1", true);
             b->setClickingTogglesState(true);
             int idx = i;
             b->onClick = [this, idx] { flipStep(idx); };
@@ -155,6 +158,7 @@ V4Dial* V4ModulePanel::addDial(const juce::String& base, const juce::String& lab
     {
         auto nr = rp->getNormalisableRange();
         e.lo = nr.start; e.hi = nr.end;
+        e.nr = nr; e.hasRange = true;
         // setupRange ANTES do attachment: o initial update escreve a caixa
         // com a função de formato final (unidades incluídas).
         d->setupRange(nr.start, nr.end, fmtFor(mod_, base));
@@ -290,15 +294,20 @@ void V4ModulePanel::updateLinkState()
     float trimD = getFloat(proc_.apvts, "trim_delay", 1.f);
     float trimV = getFloat(proc_.apvts, "trim_decay", 1.f);
 
-    // Dials contínuos: 2 agulhas no REV
+    // Dials contínuos: 2 agulhas no REV. Agulha/ticks/dot vivem no espaço
+    // COM skew (igual ao sliderPos do JUCE); só o texto usa reais.
+    auto toSkewed = [&](const DialEntry& en, float real)
+    {
+        if (! en.hasRange) return juce::jlimit(0.f, 1.f, (real - en.lo) / juce::jmax(1e-6f, en.hi - en.lo));
+        return juce::jlimit(0.f, 1.f, en.nr.convertTo0to1(real));
+    };
     for (auto& e : dials_)
     {
         if (e.dial == nullptr || e.att == nullptr) continue;
         float own = getFloat(proc_.apvts, e.paramId);
-        float own01 = juce::jlimit(0.f, 1.f, (own - e.lo) / juce::jmax(1e-6f, e.hi - e.lo));
         if (engine_ == "fwd" || !linked)
         {
-            e.dial->setNeedles(own01, own01, own01, false);
+            e.dial->setNeedles(toSkewed(e, own), toSkewed(e, own), own, false);
             e.dial->setEnabled(true);
         }
         else
@@ -313,9 +322,7 @@ void V4ModulePanel::updateLinkState()
             if (e.paramId == "rev_verb_decay") trim = trimV;
             float ghost = juce::jlimit(e.lo, e.hi, fwd * trim);
             float eff = juce::jlimit(e.lo, e.hi, ghost + (own - ghost) * morph);
-            float g01 = (ghost - e.lo) / juce::jmax(1e-6f, e.hi - e.lo);
-            float e01 = (eff - e.lo) / juce::jmax(1e-6f, e.hi - e.lo);
-            e.dial->setNeedles(own01, g01, e01, true);
+            e.dial->setNeedles(toSkewed(e, ghost), toSkewed(e, eff), eff, true);
         }
         e.dial->refreshTextIfNeeded();
         // Esbate o que não conta no estado atual (mesma linguagem do MS).

@@ -9,7 +9,8 @@ class V4Key : public juce::Component,
                  public juce::SettableTooltipClient
 {
 public:
-    enum Kind { Normal, PwrFwd, PwrRev, Link, LinkAll, Throw };
+    // Action = tecla de ação momentânea (RANDOM): sem estado, sem fill.
+    enum Kind { Normal, PwrFwd, PwrRev, Link, LinkAll, Throw, Action };
 
     V4Key(juce::RangedAudioParameter* param, const juce::String& text,
           Kind k = Normal, const juce::Colour& accent = juce::Colour(0xff16171A))
@@ -41,6 +42,12 @@ public:
     void mouseUp(const juce::MouseEvent&) override
     {
         if (tethered_) { if (onTetherClick) onTetherClick(this); return; }
+        if (kind_ == Action)
+        {
+            if (onClickExtra) onClickExtra(this);
+            repaint();
+            return;
+        }
         if (kind_ == Throw)
         {
             // momentâneo: pulso 1 depois 0 (para o flanco do DSP)
@@ -124,7 +131,7 @@ public:
                     tc = accent_.getPerceivedBrightness() < 0.4f
                        ? juce::Colour(0xffECE9E2) : juce::Colour(0xff16171A);
                 g.setColour(tc);
-                g.setFont(10.f);
+                g.setFont(juce::Font(juce::FontOptions(10.f, juce::Font::bold)));
                 g.drawFittedText(text_, getLocalBounds(), juce::Justification::centred, 1);
             }
         };

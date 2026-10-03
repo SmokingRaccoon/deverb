@@ -71,7 +71,7 @@ DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
     };
     addAndMakeVisible(ps); owned_.add(ps); presetStepper = ps;
 
-    auto* rk = new V4Key(nullptr, "RANDOM", V4Key::Normal, WaterLnF::ink);
+    auto* rk = new V4Key(nullptr, "RANDOM", V4Key::Action, WaterLnF::ink);
     rk->setBounds(788, 8, 88, 28);
     rk->onClickExtra = [this](V4Key*) { randomize(); };
     addAndMakeVisible(rk); owned_.add(rk); randomKey = rk;

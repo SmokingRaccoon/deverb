@@ -105,8 +105,25 @@ private:
         juce::Label label;
         juce::TextButton unlinkBtn { "UNLINK" };
         std::function<void()> onUnlink;
-        Toast() { addAndMakeVisible(label); addAndMakeVisible(unlinkBtn);
-                  unlinkBtn.onClick = [this] { if (onUnlink) onUnlink(); }; }
+        Toast()
+        {
+            addAndMakeVisible(label);
+            addAndMakeVisible(unlinkBtn);
+            label.setColour(juce::Label::textColourId, juce::Colour(0xffECE9E2));
+            label.setFont(juce::Font(juce::FontOptions(10.f, juce::Font::bold)));
+            unlinkBtn.getProperties().set("dark", true);
+            unlinkBtn.setColour(juce::TextButton::buttonColourId, juce::Colour(0xffECE9E2));
+            unlinkBtn.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffECE9E2));
+            unlinkBtn.setColour(juce::TextButton::textColourOnId, juce::Colour(0xff16171A));
+            unlinkBtn.onClick = [this] { if (onUnlink) onUnlink(); };
+        }
+        void paint(juce::Graphics& g) override
+        {
+            g.setColour(juce::Colour(0xff16171A));
+            g.fillRect(getLocalBounds());
+            g.setColour(juce::Colour(0xffECE9E2));
+            g.drawRect(getLocalBounds(), 1);
+        }
         void setMod(const juce::String& m)
         {
             label.setText("LINK " + m.toUpperCase() + " ON - REV FOLLOWS FWD",

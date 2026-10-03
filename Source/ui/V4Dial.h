@@ -23,14 +23,21 @@ public:
         setName(label);
         getProperties().set("variant", variant);
         getProperties().set("accent", (long long)(unsigned int)accent.getARGB());
+        // Espaços (ver B15b): a agulha usa sliderPos (JUCE, COM skew); os
+        // ticks/dot usam "geff" (COM skew, para bater na agulha); o texto
+        // mostra "geffReal" (unidades reais) quando há link, senão o valor
+        // vivo. Tudo o resto é linear e NUNCA se mistura.
         getProperties().set("ghost", 0.0);
-        getProperties().set("eff", 0.0);
+        getProperties().set("geff", 0.0);
+        getProperties().set("geffReal", defVal);
         getProperties().set("linked", false);
         getProperties().set("dark", false);
         if (variant == "xl")
             setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
         else
             setTextBoxStyle(juce::Slider::TextBoxBelow, false, 56, 14);
+        if (variant == "mer")
+            setColour(juce::Slider::textBoxTextColourId, juce::Colour(0xffECE9E2));
         setDoubleClickReturnValue(true, defVal);
         setVelocityModeParameters(1.0, 1, 0.0, true);
         setColour(juce::Slider::textBoxTextColourId, juce::Colour(0xff55544F));
@@ -53,8 +60,24 @@ public:
     }
 
     void setGhost01(float v) { getProperties().set("ghost", (double)v); repaint(); }
-    void setEff01(float v) { getProperties().set("eff", (double)v); repaint(); }
     void setLinked(bool l) { getProperties().set("linked", l); repaint(); }
+
+    // ghostSk/effSk em proporção COM skew (igual à agulha); effReal em
+    // unidades reais para a caixa. Só repinta se mudar (Timer a 30 Hz).
+    void setNeedles(float ghostSkewed, float effSkewed, double effReal, bool linked)
+    {
+        auto& pr = getProperties(); // referência! (cópia deitava tudo fora)
+        bool ch = (float)pr["ghost"] != ghostSkewed || (float)pr["geff"] != effSkewed
+               || (bool)pr["linked"] != linked
+               || (double)pr["geffReal"] != effReal;
+        pr.set("ghost", (double)ghostSkewed);
+        pr.set("geff", (double)effSkewed);
+        pr.set("geffReal", effReal);
+        pr.set("linked", linked);
+        juce::ignoreUnused(ch);
+        if (ch) repaint();
+        refreshTextIfNeeded();
+    }
 
     // A caixa só refresca no setValue; o Timer atualiza eff/agulhas sem
     // mexer no valor — sem isto a caixa mostrava o texto inicial para sempre.
@@ -66,8 +89,8 @@ public:
     // Para dials sem link (globais): efetivo = próprio.
     void syncEffToOwn()
     {
-        double norm = (hi_ > lo_) ? juce::jlimit(0.0, 1.0, (getValue() - lo_) / (hi_ - lo_)) : 0.0;
-        getProperties().set("eff", norm);
+        double v = getValue();
+        getProperties().set("geffReal", v);
         refreshTextIfNeeded();
     }
     // O SliderAttachment impõe double-click normalizado; repõe o real.
@@ -113,12 +136,19 @@ public:
         return juce::String(v, 2);
     }
 
-    // Overrides diretos (o Slider consulta-os sempre; mostra o EFETIVO).
-    juce::String getTextFromValue(double) override
+    // Overrides diretos (o Slider consulta-os sempre). Com link mostra o
+    // EFETIVO (geffReal); sem link, o valor vivo (sem lag de 33 ms).
+    juce::String getTextFromValue(double v) override
     {
-        double eff01 = getProperties().contains("eff")
-            ? (double) getProperties()["eff"] : 0.0;
-        return formatValue(fmt_, lo_ + eff01 * (hi_ - lo_));
+        bool linked = getProperties().contains("linked")
+                   && (bool) getProperties()["linked"];
+        if (linked)
+        {
+            double effReal = getProperties().contains("geffReal")
+                ? (double) getProperties()["geffReal"] : v;
+            return formatValue(fmt_, effReal);
+        }
+        return formatValue(fmt_, v);
     }
     double getValueFromText(const juce::String& text) override
     {

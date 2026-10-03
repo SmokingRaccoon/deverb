@@ -45,13 +45,17 @@ void V4Viz::paint(juce::Graphics& g)
         }
         case EngineRev:
         {
+            // 112px: triângulo + REV + PAST cabem à justa
             g.setColour(paper);
-            g.setFont(juce::Font(juce::FontOptions(24.f, juce::Font::bold)));
-            g.drawText("REV", 30, 0, 70, (int)r.getHeight(), juce::Justification::centredLeft, false);
             juce::Path arr;
             float ay = r.getCentreY();
-            arr.addTriangle(26.f, ay - 6.f, 26.f, ay + 6.f, 17.f, ay);
+            arr.addTriangle(11.f, ay - 6.f, 11.f, ay + 6.f, 2.f, ay);
             g.fillPath(arr);
+            g.setFont(juce::Font(juce::FontOptions(24.f, juce::Font::bold)));
+            g.drawText("REV", 14, 0, 52, (int)r.getHeight(), juce::Justification::centredLeft, false);
+            g.setColour(labP);
+            g.setFont(juce::Font(juce::FontOptions(10.f, juce::Font::bold)));
+            g.drawText("PAST", 68, 0, 44, (int)r.getHeight(), juce::Justification::centredLeft, false);
             break;
         }
         case Scope:
@@ -110,6 +114,11 @@ void V4Viz::paint(juce::Graphics& g)
             g.setColour(paper);
             float hx = r.getRight() - pos01 * winW;
             g.drawLine(hx, r.getY(), hx, r.getBottom(), 1.5f);
+            // cabeça de leitura ◂ (mockup .readhead)
+            juce::Path hd;
+            hd.addTriangle(hx - 7.f, r.getBottom() - 11.f, hx + 7.f, r.getBottom() - 11.f,
+                           hx, r.getBottom() - 4.f);
+            g.fillPath(hd);
             break;
         }
         case Ruler:
@@ -125,13 +134,10 @@ void V4Viz::paint(juce::Graphics& g)
             float w = r.getWidth() / 16.f;
             for (int i = 0; i < 16; ++i)
             {
+                // (o playhead vive nos steps; a régua é só escala, como no mockup)
+                juce::ignoreUnused(active);
                 float x = r.getX() + i * w + w * 0.5f;
                 bool dim = i >= n;
-                if (i == active && !dim)
-                {
-                    g.setColour(WaterLnF::accentFor(mod_));
-                    g.fillRect(juce::Rectangle<float>(x - 6.f, r.getBottom() - 4.f, 12.f, 3.f));
-                }
                 g.setColour(dim ? labP.withAlpha(0.3f) : labP);
                 g.drawLine(x, r.getBottom() - 8.f, x, r.getBottom() - 4.f, 1.f);
             }
@@ -139,9 +145,21 @@ void V4Viz::paint(juce::Graphics& g)
         }
         case GateBig:
         {
+            // Número grande + "/total" pequeno (mockup .viz.gate-big).
+            juce::String big = text_.upToFirstOccurrenceOf("/", false, true);
+            juce::String tot = "/" + text_.fromFirstOccurrenceOf("/", false, true);
+            if (big.isEmpty()) { big = "07"; tot = "/16"; }
+            g.setColour(labP);
+            g.drawLine(r.getX(), r.getY() + 4.f, r.getX(), r.getBottom() - 4.f, 1.f);
             g.setColour(ink);
             g.setFont(juce::Font(juce::FontOptions("DejaVu Sans Mono", 44.f, juce::Font::plain)));
-            g.drawText(text_.isNotEmpty() ? text_ : "07/16", r, juce::Justification::centredRight, false);
+            g.drawText(big, juce::Rectangle<int>((int)r.getX() + 8, (int)r.getY(),
+                                                 (int)r.getWidth() - 70, (int)r.getHeight()),
+                       juce::Justification::centredRight, false);
+            g.setColour(labP);
+            g.setFont(juce::Font(juce::FontOptions("DejaVu Sans Mono", 16.f, juce::Font::plain)));
+            g.drawText(tot, juce::Rectangle<int>((int)r.getRight() - 58, (int)r.getBottom() - 30, 54, 22),
+                       juce::Justification::centredLeft, false);
             break;
         }
         case MorphRead:
@@ -161,21 +179,30 @@ void V4Viz::paint(juce::Graphics& g)
             {
                 g.setColour(labP);
                 g.fillEllipse(r.getX() + 8.f, r.getCentreY() - 4.f, 8.f, 8.f);
+                g.setColour(labP);
+                g.setFont(mono);
+                g.drawFittedText(text_, getLocalBounds(), juce::Justification::centred, 1);
             }
-            g.setColour(kind == BpmSrc ? labP : ink);
-            g.setFont(mono);
-            g.drawFittedText(text_, getLocalBounds(), juce::Justification::centred, 1);
+            else
+            {
+                // readout.right do mockup: encostado à direita
+                g.setColour(ink);
+                g.setFont(mono);
+                g.drawFittedText(text_, getLocalBounds(), juce::Justification::centredRight, 1);
+            }
             break;
         case GranLed:
         {
-            // lâmpada + texto; quente = acento do módulo
+            // lâmpada + texto encostado à direita; quente = acento do módulo
             float ly = r.getCentreY();
             g.setColour(hot_ ? juce::Colour(0xffF0B323) : labP);
-            if (hot_) g.fillEllipse(r.getRight() - 70.f, ly - 4.f, 8.f, 8.f);
-            else g.drawEllipse(r.getRight() - 70.f, ly - 4.f, 8.f, 8.f, 1.5f);
+            if (hot_) g.fillEllipse(r.getRight() - 66.f, ly - 4.f, 8.f, 8.f);
+            else g.drawEllipse(r.getRight() - 66.f, ly - 4.f, 8.f, 8.f, 1.5f);
             g.setColour(hot_ ? ink : labP);
-            g.setFont(mono);
-            g.drawFittedText(text_, getLocalBounds(), juce::Justification::centred, 1);
+            g.setFont(juce::Font(juce::FontOptions("DejaVu Sans Mono", 10.f, juce::Font::bold)));
+            g.drawFittedText(text_, juce::Rectangle<int>((int)r.getX(), 0,
+                             (int)r.getWidth() - 14, (int)r.getHeight()),
+                             juce::Justification::centredRight, 1);
             break;
         }
         case Taps:
@@ -224,24 +251,48 @@ void V4Viz::paint(juce::Graphics& g)
             break;
         case Shards:
         {
-            g.setColour(juce::Colour(0xffF0B323));
+            // 15 estilhas pseudo-aleatórias determinísticas (mockup: seed 23)
+            juce::uint32 seed = 23;
+            auto rnd = [&] { seed = seed * 1664525u + 1013904223u; return (seed >> 8) / 16777216.0; };
             for (int i = 0; i < 15; ++i)
             {
-                float x = r.getX() + 8 + i * (r.getWidth()-16)/14;
-                float s = 6 + (i % 3) * 4;
-                bool up = (i % 2) == 0;
+                float x = r.getX() + 8 + (float)(i * (r.getWidth() - 24) / 14) + (float)(rnd() * 8 - 4);
+                float s = (float)(6 + rnd() * 10);
+                bool up = rnd() > 0.5;
+                float cy = r.getCentreY() + (float)(rnd() * 12 - 6);
                 juce::Path t;
-                if (up) t.addTriangle(x-s/2, r.getCentreY()+s/2, x+s/2, r.getCentreY()+s/2, x, r.getCentreY()-s/2);
-                else t.addTriangle(x-s/2, r.getCentreY()-s/2, x+s/2, r.getCentreY()-s/2, x, r.getCentreY()+s/2);
-                if (i % 3 == 2) { g.setColour(ink); g.strokePath(t, juce::PathStrokeType(1.f)); g.setColour(juce::Colour(0xffF0B323)); }
-                else g.fillPath(t);
+                if (up) t.addTriangle(x-s/2, cy+s/2, x+s/2, cy+s/2, x, cy-s/2);
+                else t.addTriangle(x-s/2, cy-s/2, x+s/2, cy-s/2, x, cy+s/2);
+                if (rnd() > 0.65) { g.setColour(ink); g.strokePath(t, juce::PathStrokeType(1.f)); }
+                else { g.setColour(juce::Colour(0xffF0B323)); g.fillPath(t); }
             }
             break;
         }
         case ModTitle:
+        {
+            // mini-glifo do módulo (objeto em acento) + título, como no mockup
+            auto acc = WaterLnF::accentFor(mod_);
+            g.setColour(acc);
+            if (mod_ == "gate") g.fillRect(4.f, r.getCentreY() - 8.f, 16.f, 16.f);
+            else if (mod_ == "delay")
+            {
+                juce::Path p;
+                p.addArc(4.f, r.getCentreY() - 8.f, 16.f, 16.f, -1.1f, 1.1f, true);
+                g.strokePath(p, juce::PathStrokeType(2.f));
+            }
+            else if (mod_ == "verb") g.drawEllipse(4.f, r.getCentreY() - 8.f, 16.f, 16.f, 2.f);
+            else
+            {
+                juce::Path p;
+                p.addTriangle(4.f, r.getCentreY() + 8.f, 20.f, r.getCentreY() + 8.f,
+                              12.f, r.getCentreY() - 8.f);
+                g.fillPath(p);
+            }
             g.setColour(ink);
             g.setFont(juce::Font(juce::FontOptions(11.f, juce::Font::bold)));
-            g.drawText(text_, r, juce::Justification::centredLeft, false);
+            g.drawText(text_, juce::Rectangle<int>(30, 0, (int)r.getWidth() - 30, (int)r.getHeight()),
+                       juce::Justification::centredLeft, false);
             break;
+        }
     }
 }
