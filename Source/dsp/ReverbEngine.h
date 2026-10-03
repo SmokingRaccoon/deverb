@@ -251,7 +251,9 @@ private:
     bool pendingStructural = false, pendingReset = false, pendingSizeChange = false;
     int appliedBucket = -1; // -1 = primeira aplicação é imediata (prepare)
     void doSetLengths(float s); // aplica já (motores), sem fade
-    juce::dsp::IIR::Filter<float> lpL, lpR, hpL, hpR;
+    // Tone com StateVariableTPTFilter: setCutoffFrequency não aloca
+    // (o IIR::Filter anterior reconstruía Coefficients com new a cada gesto).
+    juce::dsp::StateVariableTPTFilter<float> lpL, lpR, hpL, hpR;
     float lastLocut = -1.f, lastHicut = -1.f;
 };
 

@@ -16,6 +16,9 @@ void Delay::prepare(double sr, int maxBlockSize)
     smoothFreeze.reset(sr, 0.03);
     smoothDrive.reset(sr, 0.03);
     smoothSpread.reset(sr, 0.03);
+    smoothFade.reset(sr, 0.04);
+    smoothFade.setCurrentAndTargetValue(1.f);
+    pendingSwap = false;
 
     smoothDelay.setCurrentAndTargetValue((float) (0.375 * sr)); // 375 ms @48k ≈
     smoothFb.setCurrentAndTargetValue(0.35f);
@@ -36,6 +39,8 @@ void Delay::reset()
     dampStateL = dampStateR = 0.f;
     wowPhase = 0.0;
     revVoice.reset();
+    pendingSwap = false;
+    smoothFade.setCurrentAndTargetValue(1.f);
 }
 
 void Delay::setTimeMs(float ms)
@@ -48,7 +53,15 @@ void Delay::setTimeMs(float ms)
 void Delay::setFeedback(float fb) { smoothFb.setTargetValue(juce::jlimit(0.f, 0.95f, fb)); }
 void Delay::setMix(float m)       { smoothMix.setTargetValue(juce::jlimit(0.f, 1.f, m)); }
 void Delay::setFrozen(bool f)     { smoothFreeze.setTargetValue(f ? 1.f : 0.f); }
-void Delay::setAlgo(Algo a)       { algo = a; }
+void Delay::setAlgo(Algo a)
+{
+    if (a == algo && ! pendingSwap)
+        return;
+    // fade-out, troca no silêncio, fade-in (a linha mantém-se: sem tails perdidos)
+    pendingAlgo = a;
+    pendingSwap = true;
+    smoothFade.setTargetValue(0.f);
+}
 void Delay::setDrive(float d)     { smoothDrive.setTargetValue(juce::jlimit(0.f, 1.f, d)); }
 void Delay::setSpread(float s)    { smoothSpread.setTargetValue(juce::jlimit(0.f, 1.f, s)); }
 void Delay::setWowRate(float hz)  { wowRate = juce::jlimit(0.1f, 5.f, hz); }
@@ -71,6 +84,8 @@ void Delay::process(juce::AudioBuffer<float>& buffer)
         return;
 
     // --- Modo Reverse: voz dedicada (janela = tempo em beats). ---
+    // (Se houver swap pendente a meio do bloco, este bloco ainda sai em
+    // Reverse quase-muted; o próximo já segue o novo algoritmo.)
     if (algo == Algo::Reverse)
     {
         float mix = smoothMix.getNextValue();
@@ -89,9 +104,18 @@ void Delay::process(juce::AudioBuffer<float>& buffer)
 
         float frz = smoothFreeze.getNextValue();
         for (int i = 1; i < n; ++i) smoothFreeze.getNextValue();
+        float fadeR = smoothFade.getNextValue();
+        for (int i = 1; i < n; ++i) smoothFade.getNextValue();
+        if (pendingSwap && fadeR <= 0.002f)
+        {
+            algo = pendingAlgo;
+            pendingSwap = false;
+            smoothFade.setTargetValue(1.f);
+        }
         if (frz < 0.5f)
             revVoice.recordBlock(buffer);
 
+        jassert(revTmp.getNumSamples() >= n); // pré-alocado no prepare
         if (revTmp.getNumSamples() < n)
             revTmp.setSize(2, n, false, false, true);
         juce::AudioBuffer<float> view(revTmp.getArrayOfWritePointers(), 2, 0, n);
@@ -102,7 +126,7 @@ void Delay::process(juce::AudioBuffer<float>& buffer)
         for (int i = 0; i < n; ++i)
         {
             const float e = pw.next(); // 1× por amostra
-            const float wetG = mix * e;
+            const float wetG = mix * e * fadeR;
             const float dryG = dry + (1.f - dry) * (1.f - e); // e=0 → dry total
             for (int ch = 0; ch < nCh; ++ch)
                 buffer.getWritePointer(ch)[i] =
@@ -125,6 +149,15 @@ void Delay::process(juce::AudioBuffer<float>& buffer)
         const float frz = smoothFreeze.getNextValue(); // 0 normal, 1 frozen
         const float drv = smoothDrive.getNextValue();
         const float spread = smoothSpread.getNextValue();
+        float fade = smoothFade.getNextValue();
+        // Troca de algoritmo no silêncio (a linha mantém-se: sem tails perdidos).
+        if (pendingSwap && fade <= 0.002f)
+        {
+            algo = pendingAlgo;
+            pendingSwap = false;
+            smoothFade.setTargetValue(1.f);
+            fade = 0.f;
+        }
         const float dry = 1.f - mix;
 
         float inL = buffer.getSample(0, i);
@@ -198,6 +231,8 @@ void Delay::process(juce::AudioBuffer<float>& buffer)
                 line.pushSample(1, inR * (1.f - frz) + dampStateR * fb);
         }
 
+        wetL *= fade;
+        wetR *= fade;
         const float e = pw.next(); // rampa de bypass: 1× por amostra
         const float wetG = mix * e;
         const float dryG = dry + (1.f - dry) * (1.f - e);

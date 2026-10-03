@@ -155,6 +155,64 @@ int main()
         CHECK(finite && peak < 4.f, "cadeia completa estável (pico %f)", peak);
     }
 
+    // --- G. Bloco gigante (8k > FIFO 2k): scope não rebenta, som finito ---
+    {
+        DeVerbProcessor p;
+        p.prepareToPlay(sr, 512);
+        juce::AudioBuffer<float> buf(2, 8192);
+        bool finite = true;
+        for (int b = 0; b < 8; ++b)
+        {
+            for (int i = 0; i < 8192; ++i)
+            {
+                float v = std::sin((b * 8192 + i) * 0.02f) * 0.5f;
+                buf.setSample(0, i, v);
+                buf.setSample(1, i, v);
+            }
+            p.processBlock(buf, midi);
+            for (int i = 0; i < 8192; ++i)
+                if (! std::isfinite(buf.getSample(0, i))) finite = false;
+        }
+        float snap[128];
+        p.getScopeSnapshot(snap, 128);
+        bool snapOk = true;
+        for (int i = 0; i < 128; ++i)
+            if (! std::isfinite(snap[i]) || std::abs(snap[i]) > 1.f) snapOk = false;
+        CHECK(finite, "bloco 8k finito");
+        CHECK(snapOk, "scope snapshot sã após blocos 8k");
+    }
+
+    // --- H. Troca de algoritmo do delay a meio: sem clique, sem explosão ---
+    {
+        DeVerbProcessor p;
+        p.prepareToPlay(sr, 512);
+        setF(p, "fwd_delay_mix", 1.f);
+        setF(p, "fwd_delay_fb", 0.4f);
+        juce::AudioBuffer<float> buf(2, 512);
+        float maxStep = 0.f, prev = 0.f;
+        bool first = true;
+        for (int b = 0; b < 200; ++b)
+        {
+            if (b == 100) setI(p, "fwd_delay_algo", 1); // Digital -> Tape
+            for (int i = 0; i < 512; ++i)
+            {
+                float v = std::sin((b * 512 + i) * 0.03f) * 0.4f;
+                buf.setSample(0, i, v);
+                buf.setSample(1, i, v);
+            }
+            p.processBlock(buf, midi);
+            for (int i = 0; i < 512; ++i)
+            {
+                float v = buf.getSample(0, i);
+                if (! std::isfinite(v)) maxStep = 1e9f;
+                if (! first) maxStep = juce::jmax(maxStep, std::abs(v - prev));
+                prev = v;
+                first = false;
+            }
+        }
+        CHECK(maxStep < 0.4f, "troca de algo sem clique (maxStep %f)", maxStep);
+    }
+
     failures += mainOrder();
     failures += mainFuzz();
     failures += mainCivil();

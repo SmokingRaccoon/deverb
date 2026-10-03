@@ -809,6 +809,31 @@ int mainGranular()
               out[(size_t) trig + 5500]);
     }
 
+    // --- 14b. Manual: pressão aguentada dispara sempre (uma vez) ---
+    // O flanco é detetado onde quer que caia no bloco; a versão antiga só
+    // via flancos no i==0 e perdia pressões a meio do bloco (race UI/audio).
+    // Single-threaded, o flanco cai sempre numa fronteira — este teste fixa
+    // o contrato (dispara ≤3 blocos, exatamente uma vez); a deteção
+    // por-amostra cobre o caso inter-blocos.
+    {
+        Granular g;
+        setupGrabBR(g);
+        std::vector<float> out;
+        renderGrab(g, t, 4000, out, dc);
+        CHECK(! g.isActive(), "antes da pressão está parado");
+        g.setManual(true);
+        int firedAt = -1;
+        for (int b = 0; b < 5; ++b)
+        {
+            renderGrab(g, t, 512, out, zeros);
+            if (g.isActive()) { firedAt = b; break; }
+        }
+        CHECK(firedAt >= 0 && firedAt <= 2, "pressão dispara (bloco %d)", firedAt);
+        g.setManual(false);
+        renderGrab(g, t, 30000, out, zeros);
+        CHECK(! g.isActive(), "depois de soltar e esvaziar para");
+    }
+
     // --- 15. Determinismo: duas instâncias com a mesma seed soam igual ---
     {
         Granular a, b;

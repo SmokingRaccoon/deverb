@@ -163,6 +163,19 @@ int main()
         CHECK(noisyFinite(proc), "DSP finito após restore");
     }
 
+    // U5b. selMod sobrevive ao save/load (fora dos 122 IDs)
+    {
+        d.selectMod("delay");
+        juce::MemoryBlock mb;
+        proc.getStateInformation(mb);
+        d.selectMod("gran");
+        CHECK(ed.getSelMod() == "gran", "selMod muda para gran");
+        proc.setStateInformation(mb.getData(), (int) mb.getSize());
+        d.pump();
+        CHECK(proc.getSelMod() == "delay", "restore repõe selMod delay");
+        CHECK(ed.getSelMod() == "delay", "editor segue selMod do restore");
+    }
+
     // U6. RANDOM
     {
         std::vector<float> before;

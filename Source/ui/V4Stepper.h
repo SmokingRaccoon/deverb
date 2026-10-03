@@ -6,7 +6,8 @@
 // presets de pattern (6 nomes -> bits), chain_order (4), global preset
 // (role factory-preset, sem param: escreve N params).
 // Para pattern int (0..65535): options = nomes de fábrica, value = bits.
-class V4Stepper : public juce::Component
+class V4Stepper : public juce::Component,
+                 public juce::SettableTooltipClient
 {
 public:
     // Param choice/int ou nullptr (só visual com role). patternBits: se true,
@@ -33,6 +34,12 @@ public:
     }
 
     std::function<void(V4Stepper*)> onTetherClick;
+    // Preset global (sem param): mostra o último aplicado.
+    void setExternalIndex(int i)
+    {
+        idx_ = juce::jlimit(0, options_.size() - 1, i);
+        repaint();
+    }
     void setTethered(bool t, int fwdIdx = -1)
     {
         if (t == tethered_ && fwdIdx == fwdIdx_) return;

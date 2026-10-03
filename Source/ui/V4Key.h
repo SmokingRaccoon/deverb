@@ -5,7 +5,8 @@
 // Tecla v4 (.key): toggle ligado a bool via ParameterAttachment.
 // Variantes: normal, pwr-fwd (seta + lampada), pwr-rev, link (aneis),
 // link-all, throw. Tether: tracejado + 50%, clique pede UNLINK.
-class V4Key : public juce::Component
+class V4Key : public juce::Component,
+                 public juce::SettableTooltipClient
 {
 public:
     enum Kind { Normal, PwrFwd, PwrRev, Link, LinkAll, Throw };

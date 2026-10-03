@@ -40,7 +40,11 @@ public:
 
 private:
     void timerCallback() override;
-    void valueTreePropertyChanged(juce::ValueTree&, const juce::Identifier&) override {}
+    // Segue selMod vindo de fora (restore de estado): o editor mostra o
+    // módulo guardado em vez de ficar dessincronizado. O APVTS troca o
+    // objeto (`state = newState`, dispara redirected e não property).
+    void valueTreePropertyChanged(juce::ValueTree& tree, const juce::Identifier& prop) override;
+    void valueTreeRedirected(juce::ValueTree&) override;
     void showTetherToast(const juce::String& mod, juce::Component* anchor);
     void hideToast();
     void applyOrder(int idx);
@@ -153,6 +157,7 @@ private:
     std::unique_ptr<Ripples> ripples;
 
     juce::OwnedArray<juce::Component> owned_;
+    juce::TooltipWindow tipWin; // mostra os setTooltip() ao pairar
     juce::ComponentAnimator animator_;
     bool reduceMotion_ = false;
     int lastOrder_ = -1;

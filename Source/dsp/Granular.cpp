@@ -149,7 +149,8 @@ void Granular::process(juce::AudioBuffer<float>& buffer, const TempoInfo& tempo)
         {
             bool fire = false;
             if (trig == Trig::Manual)
-                fire = manualEdge && i == 0; // flanco uma vez por bloco
+                fire = manualEdge; // flanco dispara onde quer que caia no bloco
+                                   // (o `i == 0` antigo perdia flancos a meio do bloco)
             else if (trig == Trig::Chance)
             {
                 if (quantum != lastQuantum)

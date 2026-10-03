@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include <juce_audio_basics/juce_audio_basics.h>
 #include "../core/TempoInfo.h"
 #include "../core/EnableRamp.h"
@@ -60,7 +61,9 @@ private:
     Mode mode = Mode::Off;
     Trig trig = Trig::Chance;
     float chance = 0.2f, envThr = 0.126f;
-    bool manual = false, lastManual = false, interrupt = false;
+    // manual é escrito pela UI e lido por amostra no audio thread.
+    std::atomic<bool> manual { false };
+    bool lastManual = false, interrupt = false;
     TempoInfo::Note lenNote = TempoInfo::Note::N16;
     TempoInfo::Note timeNote = TempoInfo::Note::Free;
     int repeats = 4;

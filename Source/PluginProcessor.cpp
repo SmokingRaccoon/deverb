@@ -310,6 +310,12 @@ void DeVerbProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     fwdBuf.setSize(2, samplesPerBlock, false, false, true);
     smoothInput.reset(sampleRate, 0.03);
     smoothMaster.reset(sampleRate, 0.03);
+    smoothMorph.reset(sampleRate, 0.05);
+    smoothTrimDly.reset(sampleRate, 0.05);
+    smoothTrimDec.reset(sampleRate, 0.05);
+    smoothMorph.setCurrentAndTargetValue(apvts.getRawParameterValue("morph")->load());
+    smoothTrimDly.setCurrentAndTargetValue(apvts.getRawParameterValue("trim_delay")->load());
+    smoothTrimDec.setCurrentAndTargetValue(apvts.getRawParameterValue("trim_decay")->load());
     xfFwd.reset(sampleRate, 0.01); // 10 ms: crossfade do XFADE
     xfRev.reset(sampleRate, 0.01);
     smoothRevMix.reset(sampleRate, 0.03);
@@ -375,13 +381,16 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     }
 
     // v4 scope: mono pós input-gain (FIFO lock-free, sem alocação).
+    // Só as últimas scopeCap amostras: blocos maiores que a FIFO (hosts com
+    // 4k/8k) escrevem a cauda em vez de rebentar o prepareToWrite.
     {
-        int free = scopeFifo.getFreeSpace();
-        if (free < n) scopeFifo.reset();
+        int w = juce::jmin(n, scopeCap);
+        int skip = n - w;
+        if (scopeFifo.getFreeSpace() < w) scopeFifo.reset();
         int s1 = 0, sz1 = 0, s2 = 0, sz2 = 0;
-        scopeFifo.prepareToWrite(n, s1, sz1, s2, sz2);
-        const float* dl = buffer.getReadPointer(0);
-        const float* dr = nCh > 1 ? buffer.getReadPointer(1) : dl;
+        scopeFifo.prepareToWrite(w, s1, sz1, s2, sz2);
+        const float* dl = buffer.getReadPointer(0) + skip;
+        const float* dr = (nCh > 1 ? buffer.getReadPointer(1) : buffer.getReadPointer(0)) + skip;
         auto put = [&](int start, int len, int off)
         {
             for (int i = 0; i < len; ++i)
@@ -406,6 +415,10 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     // --- Fase 6: a cadeia FWD corre num scratch (ordem configurável). ---
     const int chainOrder = juce::jlimit(0, 3,
         (int) apvts.getRawParameterValue("chain_order")->load());
+    // Pré-alocado no prepare (maxBlockSize); o crescimento aqui só corre se
+    // o host violar o contrato (bloco maior sem novo prepare) — jassert em
+    // debug, segurança em release.
+    jassert(fwdBuf.getNumChannels() == 2 && fwdBuf.getNumSamples() >= n);
     if (fwdBuf.getNumChannels() != 2 || fwdBuf.getNumSamples() < n)
         fwdBuf.setSize(2, n, false, false, true);
     for (int ch = 0; ch < nCh; ++ch)
@@ -447,7 +460,7 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             preSec = TempoInfo::beatsToSeconds(
                 TempoInfo::noteToBeats((TempoInfo::Note) preNote), tempo.bpm);
         double sr = getSampleRate();
-        fwdVerb.setPredelaySamples((int) juce::jlimit(0.0, 2.0 * sr - 1.0, preSec * sr));
+        fwdVerb.setPredelaySamples((int) juce::jlimit(0.0, 6.0 * sr - 1.0, preSec * sr));
 
         fwdVerb.setFrozen(apvts.getRawParameterValue("fwd_verb_freeze")->load() > 0.5f);
         fwdVerb.setMix(apvts.getRawParameterValue("fwd_verb_mix")->load() *
@@ -537,9 +550,16 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         bool lDelay = linkM && RB("link_delay");
         bool lVerb = linkM && RB("link_verb");
         bool lGran = linkM && RB("link_gran");
-        float morph = RV("morph");
-        float trimDly = RV("trim_delay");
-        float trimDec = RV("trim_decay");
+        // Suavizados por bloco (skip(n)): o knob move-se sem zipper na REV.
+        smoothMorph.setTargetValue(RV("morph"));
+        smoothTrimDly.setTargetValue(RV("trim_delay"));
+        smoothTrimDec.setTargetValue(RV("trim_decay"));
+        smoothMorph.skip(n);
+        smoothTrimDly.skip(n);
+        smoothTrimDec.skip(n);
+        float morph = smoothMorph.getCurrentValue();
+        float trimDly = smoothTrimDly.getCurrentValue();
+        float trimDec = smoothTrimDec.getCurrentValue();
 
         revEngine.setMode((ReverseEngine::Mode) revMode);
         revEngine.setRate(RV("rev_rate"));
@@ -549,6 +569,7 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         revEngine.setDuckDepth(RV("rev_duck"));
         revEngine.setThrowButton(RB("rev_throw"));
 
+        jassert(revBuf.getNumChannels() == 2 && revBuf.getNumSamples() >= n);
         if (revBuf.getNumChannels() != 2 || revBuf.getNumSamples() < n)
             revBuf.setSize(2, n, false, false, true);
         juce::AudioBuffer<float> revView(revBuf.getArrayOfWritePointers(), 2, 0, n);
@@ -622,7 +643,7 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
                 preSec = (lVerb ? RV("fwd_verb_predelay") : RV("rev_verb_predelay")) * 0.001;
             else
                 preSec = TempoInfo::beatsToSeconds(TempoInfo::noteToBeats((N) preNote), tempo.bpm);
-            revVerb.setPredelaySamples((int) juce::jlimit(0.0, 2.0 * getSampleRate() - 1.0, preSec * getSampleRate()));
+            revVerb.setPredelaySamples((int) juce::jlimit(0.0, 6.0 * getSampleRate() - 1.0, preSec * getSampleRate()));
             revVerb.setFrozen(RL::resolveBool(lVerb, RB("fwd_verb_freeze"), RB("rev_verb_freeze")));
             revVerb.setMix(RL::resolveContinuous(lVerb, morph, RV("fwd_verb_mix"), RV("rev_verb_mix"), 0.f, 1.f));
             revVerb.setTone(RL::resolveContinuous(lVerb, morph, RV("fwd_verb_locut"), RV("rev_verb_locut"), 20.f, 500.f),
@@ -681,6 +702,7 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
                 break;
         }
         revGateStepUi.store(revGate.getCurrentStep());
+        revGranActiveUi.store(revGran.isActive());
     }
 
     // --- Fase 6: mistura final. ADD: dry + FWD + REV. XFADE: beats pares

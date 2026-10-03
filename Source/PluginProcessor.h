@@ -29,7 +29,9 @@ public:
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return 8.0; }
+    // Cauda real: T60 até 20 s + delay 2.2 s + granular 8 s. Reportar menos
+    // fazia os hosts cortar a cauda a meio (P0).
+    double getTailLengthSeconds() const override { return 30.0; }
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
     void setCurrentProgram(int) override {}
@@ -46,8 +48,9 @@ public:
     int getRevGateStep() const { return revGateStepUi.load(); }
     float getUiBpm() const  { return bpmUi.load(); }
     bool isTempoFromHost() const { return fromHostUi.load(); }
-    // Leitura p/ UI (Timer): granular ativo ou não.
+    // Leitura p/ UI (Timer): granular ativo ou não (FWD e REV).
     bool isGranularActive() const { return granActiveUi.load(); }
+    bool isRevGranularActive() const { return revGranActiveUi.load(); }
 
     // --- v4 Espelho de Agua: dados vivos + estado de UI ---
     void getScopeSnapshot(float* dst, int n); // FIFO lock-free, mono -1..1
@@ -78,6 +81,7 @@ private:
     float limPeak = 0.f, limRelCoef = 1.f;
     double dspSr = 44100.0;
     std::atomic<bool> granActiveUi { false };
+    std::atomic<bool> revGranActiveUi { false };
     std::atomic<int> gateStepUi { 0 };
     std::atomic<int> revGateStepUi { 0 };
     std::atomic<float> bpmUi { 120.f };
@@ -89,5 +93,8 @@ private:
     std::atomic<float> revCapBeatsUi { 2.f };
     std::atomic<float> revReadPosUi { 0.f };
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothInput, smoothMaster;
+    // MORPH + trims suavizados (50 ms): sem eles a cadeia REV fazia zipper
+    // ao rodar o knob herói (os módulos só suavizam o lado FWD).
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothMorph, smoothTrimDly, smoothTrimDec;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DeVerbProcessor)
 };

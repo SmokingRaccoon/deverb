@@ -145,10 +145,12 @@ V4Dial* V4ModulePanel::addDial(const juce::String& base, const juce::String& lab
     auto* d = new V4Dial(label, "m", acc, defV);
     d->setBounds(x, y, 64, 86);
     d->setDark(engine_ == "rev");
+    if (p != nullptr)
+        d->setTooltip(p->getName(64)); // v2 tinha; v4 tinha perdido
     addAndMakeVisible(d);
     owned_.add(d);
     DialEntry e;
-    e.dial = d; e.paramId = id;
+    e.dial = d; e.paramId = id; e.base = base;
     if (auto* rp = dynamic_cast<juce::RangedAudioParameter*>(p))
     {
         auto nr = rp->getNormalisableRange();
@@ -172,6 +174,7 @@ V4Seg* V4ModulePanel::addSeg(const juce::String& base, const juce::StringArray& 
     juce::String id = pid(base);
     auto* s = new V4Seg(par(id), labels, cap, accFor(mod_));
     s->setDark(engine_ == "rev");
+    if (par(id) != nullptr) s->setTooltip(par(id)->getName(64));
     s->setBounds(x, y, w, 28);
     s->onTetherClick = [this](V4Seg* sg) {
         if (onTetherClick) onTetherClick(mod_, sg);
@@ -189,6 +192,7 @@ V4Stepper* V4ModulePanel::addStepper(const juce::String& base, const juce::Strin
     juce::String id = pid(base);
     auto* s = new V4Stepper(par(id), opts, cap, bits);
     s->setDark(engine_ == "rev");
+    if (par(id) != nullptr) s->setTooltip(par(id)->getName(64));
     s->setBounds(x, y, w, 28);
     s->onTetherClick = [this](V4Stepper* sg) {
         if (onTetherClick) onTetherClick(mod_, sg);
@@ -206,6 +210,7 @@ V4Key* V4ModulePanel::addKey(const juce::String& base, const juce::String& text,
     juce::String id = pid(base);
     auto* key = new V4Key(par(id), text, k, acc);
     key->setDark(engine_ == "rev");
+    if (par(id) != nullptr) key->setTooltip(par(id)->getName(64));
     key->setBounds(x, y, w, h);
     key->onTetherClick = [this](V4Key* kk) {
         if (onTetherClick) onTetherClick(mod_, kk);
@@ -264,6 +269,23 @@ void V4ModulePanel::updateLinkState()
     else if (mod_ == "verb") linkMod = getFloat(proc_.apvts, "link_verb") > 0.5f;
     else if (mod_ == "gran") linkMod = getFloat(proc_.apvts, "link_gran") > 0.5f;
     bool linked = linkM && linkMod && engine_ == "rev";
+
+    auto effDiscrete = [&](const juce::String& base, int dflt) -> int
+    {
+        // Valor discreto EFETIVO (com link, o REV segue o FWD).
+        juce::String own = pid(base);
+        juce::String fwd = own;
+        fwd = fwd.replace("rev_gr_", "gr_");
+        if (fwd.startsWith("rev_")) fwd = "fwd_" + fwd.substring(4);
+        juce::String use = linked ? fwd : own;
+        if (auto* p = proc_.apvts.getParameter(use))
+        {
+            if (auto* c = dynamic_cast<juce::AudioParameterChoice*>(p))
+                return c->getIndex();
+            return (int)std::round(proc_.apvts.getRawParameterValue(use)->load());
+        }
+        return dflt;
+    };
     float morph = getFloat(proc_.apvts, "morph");
     float trimD = getFloat(proc_.apvts, "trim_delay", 1.f);
     float trimV = getFloat(proc_.apvts, "trim_decay", 1.f);
@@ -296,15 +318,47 @@ void V4ModulePanel::updateLinkState()
             e.dial->setNeedles(own01, g01, e01, true);
         }
         e.dial->refreshTextIfNeeded();
-        // MS só conta com DIV=Free (esbate)
+        // Esbate o que não conta no estado atual (mesma linguagem do MS).
+        float dimA = 1.f;
         if (e.paramId == "fwd_delay_time" || e.paramId == "rev_delay_time")
         {
             juce::String nid = engine_ == "fwd" ? "fwd_delay_note" : "rev_delay_note";
             // Se REV linkado, a nota segue FWD
             juce::String effNid = (linked ? "fwd_delay_note" : nid);
             int ni = (int)getFloat(proc_.apvts, effNid);
-            e.dial->setAlpha(ni == 0 ? 1.f : 0.38f);
+            dimA = ni == 0 ? 1.f : 0.38f; // MS só conta com DIV=Free
         }
+        else if (mod_ == "gran")
+        {
+            int mode = effDiscrete("mode", 0), trig = effDiscrete("trigger", 0);
+            bool off = (e.base == "chance" && trig != 0)
+                    || (e.base == "env_thr" && trig != 1)
+                    || (e.base == "repeats" && mode != 1)
+                    || (e.base == "time" && mode == 1)
+                    || (e.base == "pitch" && mode != 4)
+                    || (e.base == "flux" && mode != 2);
+            dimA = off ? 0.38f : 1.f;
+        }
+        else if (mod_ == "delay")
+        {
+            int algo = effDiscrete("algo", 0);
+            bool off = ((e.base == "drive" || e.base == "wow_rate" || e.base == "wow_depth") && algo != 1)
+                    || (e.base == "spread" && algo != 2);
+            dimA = off ? 0.38f : 1.f;
+        }
+        else if (mod_ == "gate" && e.base == "env_thr")
+        {
+            dimA = effDiscrete("trig", 0) == 2 ? 1.f : 0.38f; // só em Transient
+        }
+        e.dial->setAlpha(dimA);
+    }
+
+    // GRAB só conta em trigger Manual.
+    for (auto& k : keys_)
+    {
+        bool dim = (mod_ == "gran" && k.paramId.endsWith("manual"))
+                && effDiscrete("trigger", 0) != 2;
+        k.key->setAlpha(dim ? 0.38f : 1.f);
     }
 
     // Discretos REV: tether (seguem FWD, tracejado, clique = UNLINK)
@@ -432,7 +486,8 @@ void V4ModulePanel::updateLinkState()
     }
     else if (mod_ == "gran")
     {
-        bool active = proc_.isGranularActive();
+        bool active = engine_ == "rev" ? proc_.isRevGranularActive()
+                                       : proc_.isGranularActive();
         if (auto* v = findViz(V4Viz::GranLed))
         {
             v->setText(active ? "GRAB!" : "IDLE");

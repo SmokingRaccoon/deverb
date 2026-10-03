@@ -348,7 +348,8 @@ void Reverb::prepare(double sampleRate, int maxBlockSize)
     plate.prepare(sr, 1.f);
     shimmer.prepare(sr, 1.f);
 
-    preCap = (int) (2.0 * sr) + 64;
+    // 6.5 s: a nota 1/1 a 40 BPM são 6 s; antes clampava silenciosamente a 2 s.
+    preCap = (int) (6.5 * sr) + 64;
     preL.assign((size_t) preCap, 0.f);
     preR.assign((size_t) preCap, 0.f);
     preW = 0;
@@ -367,7 +368,9 @@ void Reverb::prepare(double sampleRate, int maxBlockSize)
     appliedBucket = -1;
 
     juce::dsp::ProcessSpec spec { sr, (juce::uint32) maxBlockSize, 2 };
-    lpL.prepare(spec); lpR.prepare(spec); hpL.prepare(spec); hpR.prepare(spec);
+    for (auto* f : { &lpL, &lpR }) { f->prepare(spec); f->setType(juce::dsp::StateVariableTPTFilterType::lowpass); f->setResonance(0.70710678f); }
+    for (auto* f : { &hpL, &hpR }) { f->prepare(spec); f->setType(juce::dsp::StateVariableTPTFilterType::highpass); f->setResonance(0.70710678f); }
+    setTone(lastLocut < 0.f ? 80.f : lastLocut, lastHicut < 0.f ? 12000.f : lastHicut);
     pw.prepare(sr);
     reset();
 }
@@ -474,15 +477,14 @@ void Reverb::setMix(float m) { smoothMix.setTargetValue(juce::jlimit(0.f, 1.f, m
 void Reverb::setTone(float locutHz, float hicutHz)
 {
     if (locutHz == lastLocut && hicutHz == lastHicut)
-        return; // coeficientes só mudam quando o parâmetro muda (sem allocs por bloco)
+        return; // cutoff só mexe quando o parâmetro muda (zero allocs, sempre)
     lastLocut = locutHz;
     lastHicut = hicutHz;
-    auto hp = juce::dsp::IIR::Coefficients<float>::makeHighPass(sr, locutHz);
-    auto lp = juce::dsp::IIR::Coefficients<float>::makeLowPass(sr, hicutHz);
-    *hpL.coefficients = *hp;
-    *hpR.coefficients = *hp;
-    *lpL.coefficients = *lp;
-    *lpR.coefficients = *lp;
+    // StateVariableTPTFilter: só matemática, sem new (era IIR+Coefficients).
+    float lo = juce::jlimit(10.f, (float) sr * 0.45f, locutHz);
+    float hi = juce::jlimit(10.f, (float) sr * 0.45f, hicutHz);
+    hpL.setCutoffFrequency(lo); hpR.setCutoffFrequency(lo);
+    lpL.setCutoffFrequency(hi); lpR.setCutoffFrequency(hi);
 }
 
 void Reverb::noteStructuralChange(bool resetEngines)
@@ -572,8 +574,8 @@ void Reverb::process(juce::AudioBuffer<float>& buffer)
         wL = mid + side * width;
         wR = mid - side * width;
 
-        wL = lpL.processSample(hpL.processSample(wL));
-        wR = lpR.processSample(hpR.processSample(wR));
+        wL = lpL.processSample(0, hpL.processSample(0, wL));
+        wR = lpR.processSample(1, hpR.processSample(1, wR));
 
         wL *= fade;
         wR *= fade;

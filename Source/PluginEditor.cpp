@@ -63,7 +63,12 @@ DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
     for (auto& pr : deVerbFactoryPresets()) presetNames.add(pr.name);
     auto* ps = new V4Stepper(nullptr, presetNames, {}, {});
     ps->setBounds(508, 8, 272, 28);
-    ps->onCustomPick = [this](int i) { applyFactoryPreset(proc.apvts, i); };
+    ps->onCustomPick = [this](int i)
+    {
+        applyFactoryPreset(proc.apvts, i);
+        if (presetStepper != nullptr)
+            presetStepper->setExternalIndex(i);
+    };
     addAndMakeVisible(ps); owned_.add(ps); presetStepper = ps;
 
     auto* rk = new V4Key(nullptr, "RANDOM", V4Key::Normal, WaterLnF::ink);
@@ -263,6 +268,8 @@ DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
     for (auto& t : tiles_)
         t.btn->setToggleState(t.mod == selMod_, juce::dontSendNotification);
 
+    proc.apvts.state.addListener(this);
+
     setSize(kW, kH);
     resized();
     startTimerHz(30);
@@ -270,6 +277,7 @@ DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
 
 DeVerbEditor::~DeVerbEditor()
 {
+    proc.apvts.state.removeListener(this);
     // Attachments primeiro: os Sliders morrem no owned_/painéis e um
     // SliderAttachment vivo a seguir chamava removeListener() em morto
     // (EXC_BAD_ACCESS no teste Editor do pluginval/mac).
@@ -284,6 +292,17 @@ DeVerbEditor::~DeVerbEditor()
     revDuckAtt.reset();
     revMixAtt.reset();
     setLookAndFeel(nullptr);
+}
+
+void DeVerbEditor::valueTreePropertyChanged(juce::ValueTree& tree, const juce::Identifier& prop)
+{
+    if (tree.getType().toString() == "v4ui" && prop.toString() == "selMod")
+        setSelMod(tree.getProperty(prop, "gate").toString(), true);
+}
+
+void DeVerbEditor::valueTreeRedirected(juce::ValueTree&)
+{
+    setSelMod(proc.getSelMod(), false);
 }
 
 void DeVerbEditor::setSelMod(const juce::String& m, bool animate)
@@ -366,13 +385,20 @@ void DeVerbEditor::applyOrder(int idx)
         for (auto& t : tiles_)
         {
             if (t.mod != mm) continue;
+            // move as 3 teclas da pedra (PWR FWD/LINK/PWR REV) junto com ela
+            int pi = modIdx(mm);
+            auto moveKey = [&](juce::Component* key, int y)
+            {
+                if (key == nullptr) return;
+                juce::Rectangle<int> r(slotX[k] + 8, y, 40, 20);
+                if (!reduceMotion_) animator_.animateComponent(key, r, 1.f, 280, false, 0.0, 0.0);
+                else key->setBounds(r);
+            };
             if (!reduceMotion_) animator_.animateComponent(t.btn, juce::Rectangle<int>(slotX[k], 290, 124, 88), 1.f, 280, false, 0.0, 0.0);
             else t.btn->setBounds(slotX[k], 290, 124, 88);
-            // move as 3 teclas da pedra (PWR FWD/LINK/PWR REV)
-            int pi = modIdx(mm);
-            if (pwrFwdKeys[pi]) pwrFwdKeys[pi]->setTopLeftPosition(slotX[k] + 8, 294);
-            if (linkKeys[pi]) linkKeys[pi]->setTopLeftPosition(slotX[k] + 8, 324);
-            if (pwrRevKeys[pi]) pwrRevKeys[pi]->setTopLeftPosition(slotX[k] + 8, 354);
+            moveKey(pwrFwdKeys[pi], 294);
+            moveKey(linkKeys[pi], 324);
+            moveKey(pwrRevKeys[pi], 354);
         }
     }
 }

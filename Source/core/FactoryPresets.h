@@ -126,9 +126,15 @@ civilizedRandom(juce::Random& rng, float wildness = 0.f)
     std::vector<P> out;
     out.reserve(115);
 
-    // Gain staging: sempre audível.
+    // Gain staging: sempre audível (mixes e PWRs forçados: com tudo a 0 ou
+    // desligado o RANDOM anterior podia sair mudo se o utilizador tivesse
+    // zerado algo antes).
     out.emplace_back("master", 0.8f);
     out.emplace_back("input_gain", 1.f);
+    out.emplace_back("fwd_mix", fr(0.7f, 1.f));
+    for (auto id : { "fwd_gate_on", "fwd_delay_on", "fwd_verb_on", "gr_on",
+                     "rev_gate_on", "rev_delay_on", "rev_verb_on", "rev_gr_on" })
+        out.emplace_back(id, 1.f);
     out.emplace_back("tempo_bpm", fr(90.f, 140.f));
     out.emplace_back("chain_order", (float) pick({ 0, 1, 2, 3 }));
     out.emplace_back("x_mode", chance(0.25f) ? 1.f : 0.f);

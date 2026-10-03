@@ -7,7 +7,8 @@
 // juce::ParameterAttachment (sem ComboBox). Suporta tether: com link ligado,
 // o REV mostra o valor FWD, fica tracejado + 50% e o clique abre CallOutBox
 // em vez de escrever (ver DESIGN-V4 §4 Tether).
-class V4Seg : public juce::Component
+class V4Seg : public juce::Component,
+                 public juce::SettableTooltipClient
 {
 public:
     V4Seg(juce::RangedAudioParameter* param,
