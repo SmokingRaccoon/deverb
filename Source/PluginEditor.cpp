@@ -63,7 +63,7 @@ DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
     for (auto& pr : deVerbFactoryPresets()) presetNames.add(pr.name);
     auto* ps = new V4Stepper(nullptr, presetNames, {}, {});
     ps->setPlaceholder("Preset…");
-    ps->setBounds(508, 8, 272, 28);
+    ps->setBounds(508, 8, 232, 28);
     ps->onCustomPick = [this](int i)
     {
         applyFactoryPreset(proc.apvts, i);
@@ -78,12 +78,18 @@ DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
     addAndMakeVisible(rk); owned_.add(rk); randomKey = rk;
 
     auto* bn = new V4Num(ap->getParameter("tempo_bpm"), "BPM", 120.0);
-    bn->setBounds(1040, 8, 128, 28);
+    bn->setBounds(980, 8, 128, 28);
+    bn->setTooltip("Tempo manual (só conta em MAN, ou em HOST sem DAW)");
     addAndMakeVisible(bn); owned_.add(bn); bpmNum = bn;
 
-    auto* bs = new V4Viz(V4Viz::BpmSrc, &proc, {}, "INT");
-    bs->setBounds(1176, 8, 80, 28);
-    addAndMakeVisible(bs); owned_.add(bs); bpmSrcViz = bs;
+    // Seletor de sync (UI state, fora dos 122 IDs): HOST segue a DAW
+    // (fallback manual sem host); MAN ignora o host por completo.
+    auto* sy = new V4Seg(nullptr, { "HOST", "MANUAL" }, {}, WaterLnF::ink);
+    sy->setBounds(1112, 8, 144, 28);
+    sy->setTooltip("HOST = segue a DAW; MAN = sempre o knob de BPM");
+    sy->onPick = [this](int i) { proc.setSyncMode(i == 0 ? "host" : "man"); };
+    sy->setIndex(proc.getSyncMode() == "man" ? 1 : 0, false);
+    addAndMakeVisible(sy); owned_.add(sy); syncSeg = sy;
 
     // ---- Sidebars ----
     auto* ef = new V4Viz(V4Viz::EngineFwd, &proc);
@@ -271,6 +277,26 @@ DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
 
     proc.apvts.state.addListener(this);
 
+    // Tab: cabeçalho -> barras -> meridiano (os painéis vêm depois, por
+    // criação; escondidos são saltados).
+    {
+        int n = 1;
+        auto tab = [&](juce::Component* c) { if (c != nullptr) c->setExplicitFocusOrder(n++); };
+        tab(presetStepper); tab(randomKey); tab(bpmNum); tab(syncSeg);
+        tab(fwdMixDial);
+        tab(revModeSeg); tab(revSourceSeg); tab(revCaptureSeg);
+        tab(revRateDial); tab(revLfoDial); tab(revDuckDial); tab(revMixDial);
+        tab(inputDial);
+        for (auto& t : tiles_) tab(t.btn);
+        for (int i = 0; i < 4; ++i)
+        {
+            tab(pwrFwdKeys[i]); tab(linkKeys[i]); tab(pwrRevKeys[i]);
+        }
+        tab(morphDial); tab(linkMasterKey); tab(throwKey);
+        tab(trimDelayDial); tab(trimDecayDial);
+        tab(xmodeSeg); tab(orderStepper); tab(masterDial);
+    }
+
     setSize(kW, kH);
     resized();
     startTimerHz(30);
@@ -297,13 +323,19 @@ DeVerbEditor::~DeVerbEditor()
 
 void DeVerbEditor::valueTreePropertyChanged(juce::ValueTree& tree, const juce::Identifier& prop)
 {
-    if (tree.getType().toString() == "v4ui" && prop.toString() == "selMod")
+    if (tree.getType().toString() != "v4ui")
+        return;
+    if (prop.toString() == "selMod")
         setSelMod(tree.getProperty(prop, "gate").toString(), true);
+    else if (prop.toString() == "syncMode" && syncSeg != nullptr)
+        syncSeg->setIndex(tree.getProperty(prop, "host").toString() == "man" ? 1 : 0, false);
 }
 
 void DeVerbEditor::valueTreeRedirected(juce::ValueTree&)
 {
     setSelMod(proc.getSelMod(), false);
+    if (syncSeg != nullptr)
+        syncSeg->setIndex(proc.getSyncMode() == "man" ? 1 : 0, false);
 }
 
 void DeVerbEditor::setSelMod(const juce::String& m, bool animate)
@@ -487,12 +519,10 @@ void DeVerbEditor::timerCallback()
         applyOrder((int)v->load());
 
     // readouts calculados
-    float bpm = proc.getUiBpm();
-    bool host = proc.isTempoFromHost();
-    juce::String src = host ? "HOST" : "INT";
-    if (bpmSrcViz) bpmSrcViz->setText(src);
-    // Com host, o BPM manual não conta: esbate a caixa (como o MS fora de Free).
-    if (bpmNum) bpmNum->setAlpha(host ? 0.5f : 1.f);
+    // Fonte efetiva: em MAN é sempre o knob; em HOST, a DAW se houver dados.
+    // A caixa do BPM esbate quando o knob não conta (como o MS fora de Free).
+    bool hostEff = proc.isTempoFromHost();
+    if (bpmNum) bpmNum->setAlpha(hostEff ? 0.5f : 1.f);
     if (morphReadViz)
         morphReadViz->setText(juce::String((int)std::round(proc.apvts.getRawParameterValue("morph")->load() * 100)) + "%");
     if (scopeViz) scopeViz->repaint();

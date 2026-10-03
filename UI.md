@@ -35,18 +35,18 @@ pluginval) — com TrueType o caminho é fiável em todas as plataformas.
 | `.dial.mer/.xl` | `V4Dial("mer"/"xl")` | disco cortado pela linha de água (2 passes + `difference`), M 48 / XL 76; MORPH é o herói |
 | `.seg` | `V4Seg` | opções todas visíveis (≤6) via `ParameterAttachment`; REV com link = tether (tracejado, valor FWD, clique abre UNLINK) |
 | `.stepper` | `V4Stepper` | prev/valor/next + roda; notas, patterns (bits→fábrica), `chain_order`, preset global (role, sem param) |
-| `.numbox` | `V4Num` | BPM arrastável + roda + duplo clique; só conta sem host (`HOST`/`INT` ao lado) |
+| `.numbox` | `V4Num` | BPM arrastável + roda + setas + duplo clique; conta em MAN ou sem host (esbate quando o knob não manda) |
 | `.key` | `V4Key` | PWR (seta+lâmpada), LINK (anéis), THROW (momentâneo), RANDOM |
 | `.tile` | `V4Tile` | pedra Bauhaus objeto+reflexo, seleciona módulo; PWR/LINK são `V4Key`s sobre a pedra |
 | `.viz.*` | `V4Viz` | scope (FIFO lock-free), capture-window (atomics `revCapBeatsUi/revReadPosUi`), taps/decay/shards de params, IR reservado |
 
 ## Mapa da janela
 
-- **Cabeçalho 44**: título, preset stepper, RANDOM, BPM numbox, `HOST`/`INT`.
+- **Cabeçalho 44**: título, preset stepper, RANDOM, BPM numbox, seletor SYNC (`HOST`/`MANUAL`, fora dos params, em `v4ui/syncMode`).
 - **Banda FWD 238** (papel): barra lateral (engine + scope + `FWD MIX`) + área de módulo 896×198.
 - **Meridiano 104** (linha y=334): `INPUT → 4 pedras (cadeia = chain_order) → MORPH+ALL → THROW → T-DLY/T-DEC → X-MODE/ORDER → MASTER`.
 - **Banda REV 238** (tinta): espelho do FWD (translação, nunca texto invertido).
-- 8 `V4ModulePanel` (4 módulos × FWD/REV), attachments criados **uma vez** no ctor; `selectedModule` em `apvts.state/v4ui/selMod` (fora dos 122 IDs); visibilidade + `ComponentAnimator` 180ms (respeita reduced-motion).
+- 8 `V4ModulePanel` (4 módulos × FWD/REV), attachments criados **uma vez** no ctor; `selectedModule` em `apvts.state/v4ui/selMod` (fora dos 122 IDs); visibilidade + `ComponentAnimator` 180ms (curtas; sem leitura de prefers-reduced-motion — o JUCE não expõe a API).
 
 ## Regras para futuros widgets (ler antes de mexer)
 

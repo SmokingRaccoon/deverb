@@ -17,6 +17,7 @@ public:
           const juce::Colour& accent = juce::Colour(0xff16171A))
         : param_(param), labels_(labels), cap_(cap), accent_(accent)
     {
+        setWantsKeyboardFocus(true);
         for (int i = 0; i < labels_.size(); ++i)
         {
             auto* b = new juce::TextButton(labels_[i]);
@@ -68,6 +69,18 @@ public:
 
     // Chamado pelo editor quando o tether é clicado: abre o toast UNLINK.
     std::function<void(V4Seg*)> onTetherClick;
+    // Chamado em cada escolha do utilizador (com ou sem param).
+    std::function<void(int)> onPick;
+
+    bool keyPressed(const juce::KeyPress& k) override
+    {
+        auto* disc = dynamic_cast<juce::AudioParameterChoice*>(param_);
+        int n = labels_.size();
+        int cur = disc != nullptr ? disc->getIndex() : idx_;
+        if (k.isKeyCode(juce::KeyPress::leftKey)) { userPick((cur + n - 1) % n); return true; }
+        if (k.isKeyCode(juce::KeyPress::rightKey)) { userPick((cur + 1) % n); return true; }
+        return false;
+    }
 
     int capWidth() const
     {
@@ -157,6 +170,7 @@ private:
             return;
         }
         setIndex(i, true);
+        if (onPick) onPick(i);
     }
     void updateFromParam()
     {

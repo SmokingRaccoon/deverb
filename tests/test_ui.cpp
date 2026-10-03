@@ -176,6 +176,20 @@ int main()
         CHECK(ed.getSelMod() == "delay", "editor segue selMod do restore");
     }
 
+    // U5c. syncMode persiste e o seletor segue (HOST/MAN, fora dos params)
+    {
+        proc.setSyncMode("man");
+        d.pump();
+        CHECK(proc.getSyncMode() == "man", "syncMode man guardado");
+        juce::MemoryBlock mb;
+        proc.getStateInformation(mb);
+        proc.setSyncMode("host");
+        proc.setStateInformation(mb.getData(), (int) mb.getSize());
+        d.pump();
+        CHECK(proc.getSyncMode() == "man", "restore repõe syncMode man");
+        proc.setSyncMode("host");
+    }
+
     // U6. RANDOM
     {
         std::vector<float> before;

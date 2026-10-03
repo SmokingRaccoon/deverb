@@ -50,12 +50,21 @@ public:
     static double beatsToSamples(double beats, double bpm, double sr)
     { return beatsToSeconds(beats, bpm) * sr; }
 
-    void update(juce::AudioProcessor& proc, double manualBpm)
+    // Política de sync (UI, fora dos 122 IDs): Host segue a DAW quando há
+    // dados (fallback manual); Manual ignora o host por completo (BPM do
+    // knob + relógio interno, mesmo com transporte a correr).
+    enum class SyncPolicy { Host, Manual };
+
+    void update(juce::AudioProcessor& proc, double manualBpm,
+                SyncPolicy policy = SyncPolicy::Host)
     {
         bpm = manualBpm;
         ppqPosition = 0.0;
         isPlaying = false;
         fromHost = false;
+
+        if (policy == SyncPolicy::Manual)
+            return;
 
         if (auto* ph = proc.getPlayHead())
         {

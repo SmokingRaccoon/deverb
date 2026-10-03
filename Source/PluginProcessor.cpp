@@ -11,6 +11,8 @@ DeVerbProcessor::DeVerbProcessor()
     auto ui = apvts.state.getOrCreateChildWithName("v4ui", nullptr);
     if (! ui.hasProperty("selMod"))
         ui.setProperty("selMod", "gate", nullptr);
+    if (! ui.hasProperty("syncMode"))
+        ui.setProperty("syncMode", "host", nullptr);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout DeVerbProcessor::createParams()
@@ -362,7 +364,9 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     smoothInput.setTargetValue(apvts.getRawParameterValue("input_gain")->load());
     smoothMaster.setTargetValue(apvts.getRawParameterValue("master")->load());
 
-    tempo.update(*this, (double) apvts.getRawParameterValue("tempo_bpm")->load());
+    tempo.update(*this, (double) apvts.getRawParameterValue("tempo_bpm")->load(),
+                   getSyncMode() == "man" ? TempoInfo::SyncPolicy::Manual
+                                           : TempoInfo::SyncPolicy::Host);
 
     // Resolver tempo do delay: nota musical (via BPM) ou ms livres.
     auto noteIdx = (int) apvts.getRawParameterValue("fwd_delay_note")->load();
@@ -812,6 +816,20 @@ void DeVerbProcessor::setSelMod(const juce::String& m)
 {
     auto ui = apvts.state.getOrCreateChildWithName("v4ui", nullptr);
     ui.setProperty("selMod", m, nullptr);
+}
+
+juce::String DeVerbProcessor::getSyncMode() const
+{
+    auto ui = apvts.state.getChildWithName("v4ui");
+    if (ui.isValid())
+        return ui.getProperty("syncMode", "host").toString();
+    return "host";
+}
+
+void DeVerbProcessor::setSyncMode(const juce::String& m)
+{
+    auto ui = apvts.state.getOrCreateChildWithName("v4ui", nullptr);
+    ui.setProperty("syncMode", m == "man" ? "man" : "host", nullptr);
 }
 
 juce::AudioProcessorEditor* DeVerbProcessor::createEditor()

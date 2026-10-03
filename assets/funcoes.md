@@ -26,7 +26,7 @@ ao vivo.
 | Preset... | — | combo | — | 11 presets de fábrica (Init, Trance Gate 16, Offbeat Chop, Big Hall Space, Reverse Tail, Reverse Throw, Beat Repeat, Stutter Brk, Dub Echo, Shimmer Pad, Build Up). |
 | RANDOM | — | botão | — | Gera um preset aleatório mas sempre audível (gamas musicais, nunca silêncio). |
 | FWD/REV | — | segmentado | FWD | Escolhe qual dos dois motores se edita nas colunas. Não é som, é só a "página" que se vê. |
-| BPM readout | `tempo_bpm` | knob 40–240 | 120.0 | Tempo interno (standalone). Na DAW, segue o tempo do projeto. |
+| BPM readout | `tempo_bpm` | knob 40–240 | 120.0 | Tempo interno. O seletor SYNC (fora dos params) escolhe HOST (segue a DAW, fallback manual) ou MAN (sempre o knob); a caixa esbate quando o knob não conta. |
 | GATE passo/total | — | readout | — | Mostra o passo atual do gater (ex. 07/16). |
 | GRAB!/IDLE | — | LED | — | Acende quando o granular está a agarrar som. |
 | G-D-V-G / Add | `chain_order` / `x_mode` | combos | G-D-V-G / Add | Ordem da cadeia e modo de mistura (ver §8 Routing). |
@@ -72,7 +72,7 @@ repetições.
 | Função (UI) | ID (`fwd_`/`rev_`) | Tipo / Gama | Default | O que faz |
 |---|---|---|---|---|
 | Algoritmo | `delay_algo` | combo | Digital | **Digital** (limpo), **Tape** (fita vintage), **PingPong** (saltita L/R), **MultiTap** (4 repetições rítmicas), **Reverse** (repete ao contrário). |
-| BPM | `tempo_bpm` | knob 40–240 | 120.0 | Base de tempo manual — **só conta sem host** (no standalone parado); na DAW manda o projeto. O readout mostra `HOST` ou `INT` conforme a fonte. |
+| BPM | `tempo_bpm` | knob 40–240 | 120.0 | Base de tempo manual — conta em MAN ou sem host; em HOST manda a DAW. Setas ↑↓ afinam (±1, Shift ±0.1); duplo clique repõe 120. |
 | DIV | `delay_note` | combo de notas | 1/8D | **O controlo principal do tempo**: divisões musicais que seguem o BPM (Free, 1/32…1/1; T = tercina, D = pontuada). |
 | MS | `delay_time` | knob 1–2000 ms | 375 | Ajuste fino em ms — **só mexe quando DIV = Free** (o knob fica esbatido caso contrário). O readout mostra sempre o resultado: `375 ms - 1/8D @ HOST`. |
 | FB | `delay_fb` | knob 0–0.95 | 0.35 | Feedback: quantas vezes repete. Alto = repetições infinitas. |

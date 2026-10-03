@@ -4,7 +4,8 @@
 
 // Numbox v4 (.numbox): número arrastável (BPM). Só tem efeito sem host
 // (o editor mostra HOST/INT ao lado). Duplo clique = default.
-class V4Num : public juce::Component
+class V4Num : public juce::Component,
+                public juce::SettableTooltipClient
 {
 public:
     V4Num(juce::RangedAudioParameter* param, const juce::String& cap, double defV)
@@ -17,6 +18,25 @@ public:
             attach->sendInitialUpdate();
         }
         setMouseCursor(juce::MouseCursor::UpDownResizeCursor);
+        setWantsKeyboardFocus(true);
+    }
+
+    bool keyPressed(const juce::KeyPress& k) override
+    {
+        if (param_ == nullptr || attach == nullptr)
+            return false;
+        float step = k.getModifiers().isShiftDown() ? 0.1f : 1.f;
+        if (k.isKeyCode(juce::KeyPress::upKey))
+        {
+            attach->setValueAsCompleteGesture(juce::jlimit(40.f, 240.f, val_ + step));
+            return true;
+        }
+        if (k.isKeyCode(juce::KeyPress::downKey))
+        {
+            attach->setValueAsCompleteGesture(juce::jlimit(40.f, 240.f, val_ - step));
+            return true;
+        }
+        return false;
     }
 
     void mouseDown(const juce::MouseEvent& e) override

@@ -18,6 +18,7 @@ public:
               const std::vector<int>& bits = {})
         : param_(param), options_(options), cap_(cap), bits_(bits)
     {
+        setWantsKeyboardFocus(true);
         prev_.onClick = [this] { step(-1); };
         next_.onClick = [this] { step(+1); };
         prev_.getProperties().set("nobg", true);
@@ -85,6 +86,13 @@ public:
     {
         // mockup: roda para baixo avança (+1), como nos dials (up = +).
         if (std::abs(w.deltaY) > 0.001f) step(w.deltaY > 0 ? +1 : -1);
+    }
+
+    bool keyPressed(const juce::KeyPress& k) override
+    {
+        if (k.isKeyCode(juce::KeyPress::leftKey)) { step(-1); return true; }
+        if (k.isKeyCode(juce::KeyPress::rightKey)) { step(+1); return true; }
+        return false;
     }
 
     void resized() override

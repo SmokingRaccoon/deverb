@@ -58,6 +58,9 @@ public:
     float getRevReadPosUi() const { return revReadPosUi.load(); } // 0..1 na janela
     juce::String getSelMod() const;
     void setSelMod(const juce::String& m);
+    // Política de sync (v4ui, fora dos params): "host" (default) ou "man".
+    juce::String getSyncMode() const;
+    void setSyncMode(const juce::String& m);
 
 private:
     TempoInfo tempo;   // relógio central (lido por todos os módulos)

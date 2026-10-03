@@ -63,7 +63,7 @@ private:
     V4Stepper* presetStepper = nullptr;
     V4Key* randomKey = nullptr;
     V4Num* bpmNum = nullptr;
-    V4Viz* bpmSrcViz = nullptr;
+    V4Seg* syncSeg = nullptr;
 
     // Sidebars
     V4Viz* engineFwdViz = nullptr;

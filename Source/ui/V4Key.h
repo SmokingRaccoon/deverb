@@ -23,6 +23,18 @@ public:
             attach->sendInitialUpdate();
         }
         setMouseCursor(juce::MouseCursor::PointingHandCursor);
+        setWantsKeyboardFocus(true);
+    }
+
+    bool keyPressed(const juce::KeyPress& k) override
+    {
+        // Espaço/Enter = clique (Throw dispara, Action corre, resto alterna).
+        if (k.isKeyCode(juce::KeyPress::spaceKey) || k.isKeyCode(juce::KeyPress::returnKey))
+        {
+            press();
+            return true;
+        }
+        return false;
     }
 
     void setTethered(bool t) { if (t != tethered_) { tethered_ = t; repaint(); } }
@@ -39,7 +51,9 @@ public:
     std::function<void(V4Key*)> onTetherClick;
     std::function<void(V4Key*)> onClickExtra; // throw ripples, random, etc.
 
-    void mouseUp(const juce::MouseEvent&) override
+    void mouseUp(const juce::MouseEvent&) override { press(); }
+
+    void press()
     {
         if (tethered_) { if (onTetherClick) onTetherClick(this); return; }
         if (kind_ == Action)
