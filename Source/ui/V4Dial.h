@@ -81,10 +81,21 @@ public:
 
     // A caixa só refresca no setValue; o Timer atualiza eff/agulhas sem
     // mexer no valor — sem isto a caixa mostrava o texto inicial para sempre.
+    // Early-out barato (o Timer corre a 30 Hz): só formata se algo mudou.
     void refreshTextIfNeeded()
     {
-        juce::String t = getTextFromValue(getValue());
-        if (t != lastShown_) { lastShown_ = t; updateText(); }
+        double v = getValue();
+        double effReal = getProperties().contains("geffReal")
+            ? (double) getProperties()["geffReal"] : v;
+        bool linked = getProperties().contains("linked")
+                   && (bool) getProperties()["linked"];
+        double key = linked ? effReal : v;
+        if (key != lastKey_)
+        {
+            lastKey_ = key;
+            juce::String t = getTextFromValue(v);
+            if (t != lastShown_) { lastShown_ = t; updateText(); }
+        }
     }
     // Para dials sem link (globais): efetivo = próprio.
     void syncEffToOwn()
@@ -115,6 +126,7 @@ public:
     double defV = 0.0;
     juce::Colour accentCol;
     juce::String lastShown_ { "@" };
+    double lastKey_ = std::numeric_limits<double>::quiet_NaN();
 
     static juce::String formatValue(const juce::String& fmt, double v)
     {

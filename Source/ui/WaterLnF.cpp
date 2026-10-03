@@ -130,7 +130,9 @@ void WaterLnF::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int 
             g.drawLine(juce::Line<float>({cx, cy}, tip), w);
     };
 
-    if (linked)
+    // Fantasma só quando se distingue da própria (senão engrossa a agulha
+    // e os dials REV parecem diferentes dos FWD sem motivo).
+    if (linked && std::abs(ghost01 - sliderPos) > 0.02f)
         needleLine(ghost01, bg, 5.f, true); // fantasma oca, cor do fundo
     if (isMer)
     {

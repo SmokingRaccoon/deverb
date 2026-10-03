@@ -488,8 +488,11 @@ void DeVerbEditor::timerCallback()
 
     // readouts calculados
     float bpm = proc.getUiBpm();
-    juce::String src = proc.isTempoFromHost() ? "HOST" : "INT";
+    bool host = proc.isTempoFromHost();
+    juce::String src = host ? "HOST" : "INT";
     if (bpmSrcViz) bpmSrcViz->setText(src);
+    // Com host, o BPM manual não conta: esbate a caixa (como o MS fora de Free).
+    if (bpmNum) bpmNum->setAlpha(host ? 0.5f : 1.f);
     if (morphReadViz)
         morphReadViz->setText(juce::String((int)std::round(proc.apvts.getRawParameterValue("morph")->load() * 100)) + "%");
     if (scopeViz) scopeViz->repaint();
