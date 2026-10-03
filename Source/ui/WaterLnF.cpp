@@ -45,7 +45,10 @@ void WaterLnF::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int 
     auto lab = dark ? labI : labP;  // etiquetas
 
     float cx = r.getCentreX();
-    float cy = r.getY() + (isMer ? 14.f : 0.f) + ringD * 0.5f;
+    // Mer (anel 58) desce 14px para a etiqueta; XL (anel 88, sem etiqueta)
+    // começa a 0 — senão o MORPH ficava 14px abaixo da linha de água.
+    float topPad = (variant == "mer") ? 14.f : 0.f;
+    float cy = r.getY() + topPad + ringD * 0.5f;
     bool linked = props.contains("linked") ? (bool)props["linked"] : false;
     // Ticks/dot seguem a agulha (espaço COM skew): sem link, a posição viva
     // do slider; com link, o efetivo resolvido (já com skew).
