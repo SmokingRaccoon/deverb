@@ -415,15 +415,7 @@ juce::Slider* DeVerbEditor::findDial(const juce::String& paramId)
     for (int e = 0; e < 2; ++e)
         for (int m = 0; m < 4; ++m)
             if (auto* d = panels[e][m]->findDial(paramId)) return d;
-    juce::Slider* globals[] = { fwdMixDial, revRateDial, revLfoDial, revDuckDial, revMixDial,
-                                inputDial, morphDial, trimDelayDial, trimDecayDial, masterDial };
-    for (auto* d : globals)
-        if (d != nullptr && proc.apvts.getParameter(paramId) != nullptr)
-        {
-            // compara via attachment? simplifica: verifica se o attachment aponta para o id
-            // (só usado em testes para fb/decay/master genéricos — devolve por nome conhecido)
-        }
-    // fallback por ids conhecidos
+    // globais por id conhecido
     if (paramId == "fwd_mix") return fwdMixDial;
     if (paramId == "rev_rate") return revRateDial;
     if (paramId == "rev_lfo") return revLfoDial;

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<title>deVerb — esqueleto 1280x624 (UI v2)</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="page">
+<div class="meta">deVerb UI v2 · esqueleto 1:1 em px · origem (0,0) topo-esq · <b>FWD|REV</b> = uma coluna edita FWD ou REV (data-param-fwd/rev) · globais usam data-param · <span class="mono">assets/mockup/generate.py</span></div>
+<div id="stage">
+<div class="topbar"></div>
+<div class="toplines"></div>
+<div class="panel motor" style="left:8px;top:108px;width:184px;height:508px"><div class="phead"><span class="dot" style="background:#b5b5b5"></span>MOTOR - PERFORM</div><div class="accent" style="background:#b5b5b5"></div></div>
+<div class="panel gate" style="left:200px;top:108px;width:296px;height:508px"><div class="phead"><span class="dot" style="background:#fed134"></span>GATE - TRANCE</div><div class="accent" style="background:#fed134"></div></div>
+<div class="panel delay" style="left:504px;top:108px;width:232px;height:508px"><div class="phead"><span class="dot" style="background:#58c472"></span>DELAY - ECHO</div><div class="accent" style="background:#58c472"></div></div>
+<div class="panel verb" style="left:744px;top:108px;width:256px;height:508px"><div class="phead"><span class="dot" style="background:#5aa9e6"></span>VERB - SPACE</div><div class="accent" style="background:#5aa9e6"></div></div>
+<div class="panel gran" style="left:1008px;top:108px;width:264px;height:508px"><div class="phead"><span class="dot" style="background:#ff9034"></span>GRAN - GLITCH</div><div class="accent" style="background:#ff9034"></div></div>
+<div class="widgets">
+<div class="visual title" style="left:12px;top:0px;width:200px;height:36px" data-visual="title">deVerb</div>
+<div class="visual readout" style="left:220px;top:7px;width:110px;height:22px" data-visual="bpm-readout">BPM 120.0 INT</div>
+<div class="visual readout" style="left:340px;top:7px;width:130px;height:22px" data-visual="gate-readout">GATE 01/16</div>
+<div class="combo" style="left:560px;top:7px;width:240px;height:22px" data-role="factory-preset" title="Preset fabrica"><span class="clabel">Preset fabrica</span><span class="cval">Preset... ▾</span></div>
+<button class="tbtn" style="left:806px;top:7px;width:68px;height:22px" data-role="random" title="RANDOM">RANDOM</button>
+<button class="tbtn" style="left:880px;top:7px;width:90px;height:22px" data-role="mode-fwdrev" title="FWD">FWD</button>
+<button class="tbtn" style="left:972px;top:7px;width:90px;height:22px" data-role="mode-fwdrev" title="REV">REV</button>
+<div class="visual led" style="left:1148px;top:7px;width:120px;height:22px" data-visual="gran-led">IDLE</div>
+<div class="visual sect" style="left:12px;top:40px;width:52px;height:56px" data-visual="sect-rev">REV</div>
+<div class="combo" style="left:70px;top:42px;width:110px;height:30px" data-param="rev_mode" title="REV Mode"><span class="clabel">REV Mode</span><span class="cval">Loop ▾</span></div>
+<div class="combo" style="left:186px;top:42px;width:90px;height:30px" data-param="rev_source" title="REV Source"><span class="clabel">REV Source</span><span class="cval">Dry ▾</span></div>
+<div class="combo" style="left:282px;top:42px;width:90px;height:30px" data-param="rev_capture" title="REV Capture"><span class="clabel">REV Capture</span><span class="cval">2 beats ▾</span></div>
+<div class="knob" style="left:378px;top:38px;width:56px;height:58px" data-param="rev_rate" data-label="RATE" ><div class="dial"><div class="ptr"></div></div><div class="klabel">RATE</div><div class="kval">--</div></div>
+<div class="knob" style="left:438px;top:38px;width:56px;height:58px" data-param="rev_lfo" data-label="LFO" ><div class="dial"><div class="ptr"></div></div><div class="klabel">LFO</div><div class="kval">--</div></div>
+<div class="knob" style="left:498px;top:38px;width:56px;height:58px" data-param="rev_duck" data-label="DUCK" ><div class="dial"><div class="ptr"></div></div><div class="klabel">DUCK</div><div class="kval">--</div></div>
+<button class="tbtn tog" style="left:560px;top:44px;width:90px;height:30px" data-param="rev_throw" title="THROW">THROW</button>
+<div class="visual sect" style="left:656px;top:40px;width:40px;height:56px" data-visual="sect-link">LINK</div>
+<button class="tbtn tog" style="left:700px;top:44px;width:56px;height:30px" data-param="link_master" title="ALL">ALL</button>
+<button class="tbtn tog" style="left:758px;top:44px;width:56px;height:30px" data-param="link_gate" title="GATE">GATE</button>
+<button class="tbtn tog" style="left:816px;top:44px;width:56px;height:30px" data-param="link_delay" title="DLY">DLY</button>
+<button class="tbtn tog" style="left:874px;top:44px;width:56px;height:30px" data-param="link_verb" title="VRB">VRB</button>
+<button class="tbtn tog" style="left:932px;top:44px;width:56px;height:30px" data-param="link_gran" title="GRN">GRN</button>
+<div class="knob" style="left:996px;top:38px;width:56px;height:58px" data-param="trim_delay" data-label="T-DLY" ><div class="dial"><div class="ptr"></div></div><div class="klabel">T-DLY</div><div class="kval">--</div></div>
+<div class="knob" style="left:1056px;top:38px;width:56px;height:58px" data-param="trim_decay" data-label="T-DEC" ><div class="dial"><div class="ptr"></div></div><div class="klabel">T-DEC</div><div class="kval">--</div></div>
+<div class="combo" style="left:1116px;top:44px;width:76px;height:30px" data-param="chain_order" title="Chain Order"><span class="clabel">Chain Order</span><span class="cval">G-D-V-G ▾</span></div>
+<div class="combo" style="left:1196px;top:44px;width:72px;height:30px" data-param="x_mode" title="X Mode"><span class="clabel">X Mode</span><span class="cval">Add ▾</span></div>
+<div class="knob" style="left:64px;top:132px;width:72px;height:90px" data-param="input_gain" data-label="INPUT" ><div class="dial"><div class="ptr"></div></div><div class="klabel">INPUT</div><div class="kval">--</div></div>
+<div class="knob" style="left:12px;top:226px;width:84px;height:90px" data-param="fwd_mix" data-label="FWD MIX" ><div class="dial"><div class="ptr"></div></div><div class="klabel">FWD MIX</div><div class="kval">--</div></div>
+<div class="knob" style="left:100px;top:226px;width:84px;height:90px" data-param="rev_mix" data-label="REV MIX" ><div class="dial"><div class="ptr"></div></div><div class="klabel">REV MIX</div><div class="kval">--</div></div>
+<div class="knob" style="left:52px;top:320px;width:88px;height:110px" data-param="morph" data-label="MORPH" ><div class="dial"><div class="ptr"></div></div><div class="klabel">MORPH</div><div class="kval">--</div></div>
+<div class="knob" style="left:52px;top:434px;width:88px;height:110px" data-param="master" data-label="MASTER" ><div class="dial"><div class="ptr"></div></div><div class="klabel">MASTER</div><div class="kval">--</div></div>
+<div class="visual ruler" style="left:204px;top:132px;width:288px;height:44px" data-visual="ruler">RULER 16 steps</div>
+<button class="step" style="left:204px;top:184px;width:34px;height:46px" data-param-fwd="fwd_gate_pattern" data-param-rev="rev_gate_pattern" data-step="0" title="step 1">1</button>
+<button class="step" style="left:240px;top:184px;width:34px;height:46px" data-param-fwd="fwd_gate_pattern" data-param-rev="rev_gate_pattern" data-step="1" title="step 2">2</button>
+<button class="step" style="left:276px;top:184px;width:34px;height:46px" data-param-fwd="fwd_gate_pattern" data-param-rev="rev_gate_pattern" data-step="2" title="step 3">3</button>
+<button class="step" style="left:312px;top:184px;width:34px;height:46px" data-param-fwd="fwd_gate_pattern" data-param-rev="rev_gate_pattern" data-step="3" title="step 4">4</button>
+<button class="step" style="left:348px;top:184px;width:34px;height:46px" data-param-fwd="fwd_gate_pattern" data-param-rev="rev_gate_pattern" data-step="4" title="step 5">5</button>
+<button class="step" style="left:384px;top:184px;width:34px;height:46px" data-param-fwd="fwd_gate_pattern" data-param-rev="rev_gate_pattern" data-step="5" title="step 6">6</button>
+<button class="step" style="left:420px;top:184px;width:34px;height:46px" data-param-fwd="fwd_gate_pattern" data-param-rev="rev_gate_pattern" data-step="6" title="step 7">7</button>
+<button class="step" style="left:456px;top:184px;width:34px;height:46px" data-param-fwd="fwd_gate_pattern" data-param-rev="rev_gate_pattern" data-step="7" title="step 8">8</button>
+<button class="step" style="left:204px;top:232px;width:34px;height:46px" data-param-fwd="fwd_gate_pattern" data-param-rev="rev_gate_pattern" data-step="8" title="step 9">9</button>
+<button class="step" style="left:240px;top:232px;width:34px;height:46px" data-param-fwd="fwd_gate_pattern" data-param-rev="rev_gate_pattern" data-step="9" title="step 10">10</button>
+<button class="step" style="left:276px;top:232px;width:34px;height:46px" data-param-fwd="fwd_gate_pattern" data-param-rev="rev_gate_pattern" data-step="10" title="step 11">11</button>
+<button class="step" style="left:312px;top:232px;width:34px;height:46px" data-param-fwd="fwd_gate_pattern" data-param-rev="rev_gate_pattern" data-step="11" title="step 12">12</button>
+<button class="step" style="left:348px;top:232px;width:34px;height:46px" data-param-fwd="fwd_gate_pattern" data-param-rev="rev_gate_pattern" data-step="12" title="step 13">13</button>
+<button class="step" style="left:384px;top:232px;width:34px;height:46px" data-param-fwd="fwd_gate_pattern" data-param-rev="rev_gate_pattern" data-step="13" title="step 14">14</button>
+<button class="step" style="left:420px;top:232px;width:34px;height:46px" data-param-fwd="fwd_gate_pattern" data-param-rev="rev_gate_pattern" data-step="14" title="step 15">15</button>
+<button class="step" style="left:456px;top:232px;width:34px;height:46px" data-param-fwd="fwd_gate_pattern" data-param-rev="rev_gate_pattern" data-step="15" title="step 16">16</button>
+<div class="combo" style="left:204px;top:280px;width:144px;height:32px" data-role="pattern-preset" data-param-fwd="fwd_gate_pattern" data-param-rev="rev_gate_pattern" title="Pattern fabrica"><span class="clabel">Pattern fabrica</span><span class="cval">Pattern... ▾</span></div>
+<div class="combo" style="left:352px;top:280px;width:144px;height:32px" data-param-fwd="fwd_gate_rate" data-param-rev="rev_gate_rate" title="Gate Rate"><span class="clabel">Gate Rate</span><span class="cval">1/16 ▾</span></div>
+<div class="combo" style="left:204px;top:316px;width:144px;height:32px" data-param-fwd="fwd_gate_steps" data-param-rev="rev_gate_steps" title="Gate Steps"><span class="clabel">Gate Steps</span><span class="cval">16 ▾</span></div>
+<div class="combo" style="left:352px;top:316px;width:144px;height:32px" data-param-fwd="fwd_gate_trig" data-param-rev="rev_gate_trig" title="Gate Trig"><span class="clabel">Gate Trig</span><span class="cval">Host ▾</span></div>
+<div class="knob" style="left:204px;top:362px;width:96px;height:110px" data-param-fwd="fwd_gate_smooth" data-param-rev="rev_gate_smooth" data-label="SMOOTH" ><div class="dial"><div class="ptr"></div></div><div class="klabel">SMOOTH</div><div class="kval">--</div></div>
+<div class="knob" style="left:301px;top:362px;width:96px;height:110px" data-param-fwd="fwd_gate_depth" data-param-rev="rev_gate_depth" data-label="DEPTH" ><div class="dial"><div class="ptr"></div></div><div class="klabel">DEPTH</div><div class="kval">--</div></div>
+<div class="knob" style="left:398px;top:362px;width:96px;height:110px" data-param-fwd="fwd_gate_mix" data-param-rev="rev_gate_mix" data-label="MIX" ><div class="dial"><div class="ptr"></div></div><div class="klabel">MIX</div><div class="kval">--</div></div>
+<div class="knob" style="left:204px;top:476px;width:96px;height:110px" data-param-fwd="fwd_gate_pan" data-param-rev="rev_gate_pan" data-label="PAN" ><div class="dial"><div class="ptr"></div></div><div class="klabel">PAN</div><div class="kval">--</div></div>
+<div class="knob" style="left:301px;top:476px;width:96px;height:110px" data-param-fwd="fwd_gate_env_thr" data-param-rev="rev_gate_env_thr" data-label="THR" ><div class="dial"><div class="ptr"></div></div><div class="klabel">THR</div><div class="kval">--</div></div>
+<button class="tbtn tog" style="left:444px;top:110px;width:48px;height:20px" data-param-fwd="fwd_gate_on" data-param-rev="rev_gate_on" title="PWR">PWR</button>
+<div class="knob" style="left:508px;top:132px;width:72px;height:90px" data-param="tempo_bpm" data-label="BPM" ><div class="dial"><div class="ptr"></div></div><div class="klabel">BPM</div><div class="kval">--</div></div>
+<div class="knob" style="left:582px;top:132px;width:72px;height:90px" data-param-fwd="fwd_delay_time" data-param-rev="rev_delay_time" data-label="MS" ><div class="dial"><div class="ptr"></div></div><div class="klabel">MS</div><div class="kval">--</div></div>
+<div class="knob" style="left:656px;top:132px;width:72px;height:90px" data-param-fwd="fwd_delay_fb" data-param-rev="rev_delay_fb" data-label="FB" ><div class="dial"><div class="ptr"></div></div><div class="klabel">FB</div><div class="kval">--</div></div>
+<div class="knob" style="left:508px;top:226px;width:72px;height:90px" data-param-fwd="fwd_delay_damp" data-param-rev="rev_delay_damp" data-label="DAMP" ><div class="dial"><div class="ptr"></div></div><div class="klabel">DAMP</div><div class="kval">--</div></div>
+<div class="knob" style="left:582px;top:226px;width:72px;height:90px" data-param-fwd="fwd_delay_mix" data-param-rev="rev_delay_mix" data-label="MIX" ><div class="dial"><div class="ptr"></div></div><div class="klabel">MIX</div><div class="kval">--</div></div>
+<div class="combo" style="left:508px;top:320px;width:224px;height:32px" data-param-fwd="fwd_delay_algo" data-param-rev="rev_delay_algo" title="Delay Algo"><span class="clabel">Delay Algo</span><span class="cval">Digital ▾</span></div>
+<div class="knob" style="left:508px;top:356px;width:110px;height:64px" data-param-fwd="fwd_delay_drive" data-param-rev="rev_delay_drive" data-label="DRIVE" data-size="mini"><div class="dial"><div class="ptr"></div></div><div class="klabel">DRIVE</div><div class="kval">--</div></div>
+<div class="knob" style="left:622px;top:356px;width:110px;height:64px" data-param-fwd="fwd_delay_wow_rate" data-param-rev="rev_delay_wow_rate" data-label="WOW RT" data-size="mini"><div class="dial"><div class="ptr"></div></div><div class="klabel">WOW RT</div><div class="kval">--</div></div>
+<div class="knob" style="left:508px;top:424px;width:110px;height:64px" data-param-fwd="fwd_delay_wow_depth" data-param-rev="rev_delay_wow_depth" data-label="WOW DP" data-size="mini"><div class="dial"><div class="ptr"></div></div><div class="klabel">WOW DP</div><div class="kval">--</div></div>
+<div class="knob" style="left:622px;top:424px;width:110px;height:64px" data-param-fwd="fwd_delay_spread" data-param-rev="rev_delay_spread" data-label="SPREAD" data-size="mini"><div class="dial"><div class="ptr"></div></div><div class="klabel">SPREAD</div><div class="kval">--</div></div>
+<div class="combo" style="left:508px;top:492px;width:224px;height:32px" data-param-fwd="fwd_delay_note" data-param-rev="rev_delay_note" title="Delay Note"><span class="clabel">Delay Note</span><span class="cval">1/8D ▾</span></div>
+<div class="visual readout" style="left:508px;top:528px;width:224px;height:20px" data-visual="delay-ms">375 ms - 1/8D @ INT</div>
+<button class="tbtn tog" style="left:508px;top:552px;width:120px;height:32px" data-param-fwd="fwd_delay_freeze" data-param-rev="rev_delay_freeze" title="Freeze">Freeze</button>
+<button class="tbtn tog" style="left:684px;top:110px;width:48px;height:20px" data-param-fwd="fwd_delay_on" data-param-rev="rev_delay_on" title="PWR">PWR</button>
+<div class="knob" style="left:744px;top:132px;width:64px;height:90px" data-param-fwd="fwd_verb_size" data-param-rev="rev_verb_size" data-label="SIZE" ><div class="dial"><div class="ptr"></div></div><div class="klabel">SIZE</div><div class="kval">--</div></div>
+<div class="knob" style="left:808px;top:132px;width:64px;height:90px" data-param-fwd="fwd_verb_decay" data-param-rev="rev_verb_decay" data-label="DECAY" ><div class="dial"><div class="ptr"></div></div><div class="klabel">DECAY</div><div class="kval">--</div></div>
+<div class="knob" style="left:872px;top:132px;width:64px;height:90px" data-param-fwd="fwd_verb_damp" data-param-rev="rev_verb_damp" data-label="DAMP" ><div class="dial"><div class="ptr"></div></div><div class="klabel">DAMP</div><div class="kval">--</div></div>
+<div class="knob" style="left:936px;top:132px;width:64px;height:90px" data-param-fwd="fwd_verb_width" data-param-rev="rev_verb_width" data-label="WIDTH" ><div class="dial"><div class="ptr"></div></div><div class="klabel">WIDTH</div><div class="kval">--</div></div>
+<div class="knob" style="left:744px;top:226px;width:64px;height:90px" data-param-fwd="fwd_verb_predelay" data-param-rev="rev_verb_predelay" data-label="PRE-DLY" ><div class="dial"><div class="ptr"></div></div><div class="klabel">PRE-DLY</div><div class="kval">--</div></div>
+<div class="knob" style="left:808px;top:226px;width:64px;height:90px" data-param-fwd="fwd_verb_locut" data-param-rev="rev_verb_locut" data-label="LO-CUT" ><div class="dial"><div class="ptr"></div></div><div class="klabel">LO-CUT</div><div class="kval">--</div></div>
+<div class="knob" style="left:872px;top:226px;width:64px;height:90px" data-param-fwd="fwd_verb_hicut" data-param-rev="rev_verb_hicut" data-label="HI-CUT" ><div class="dial"><div class="ptr"></div></div><div class="klabel">HI-CUT</div><div class="kval">--</div></div>
+<div class="knob" style="left:936px;top:226px;width:64px;height:90px" data-param-fwd="fwd_verb_mix" data-param-rev="rev_verb_mix" data-label="MIX" ><div class="dial"><div class="ptr"></div></div><div class="klabel">MIX</div><div class="kval">--</div></div>
+<div class="combo" style="left:748px;top:324px;width:122px;height:32px" data-param-fwd="fwd_verb_algo" data-param-rev="rev_verb_algo" title="Verb Algo"><span class="clabel">Verb Algo</span><span class="cval">Hall ▾</span></div>
+<div class="combo" style="left:874px;top:324px;width:122px;height:32px" data-param-fwd="fwd_verb_predelay_note" data-param-rev="rev_verb_predelay_note" title="PreDelay Note"><span class="clabel">PreDelay Note</span><span class="cval">Free ▾</span></div>
+<div class="visual readout" style="left:748px;top:360px;width:248px;height:20px" data-visual="verb-t60">T60 2.5 s</div>
+<button class="tbtn tog" style="left:748px;top:384px;width:124px;height:32px" data-param-fwd="fwd_verb_freeze" data-param-rev="rev_verb_freeze" title="Freeze">Freeze</button>
+<button class="tbtn tog" style="left:948px;top:110px;width:48px;height:20px" data-param-fwd="fwd_verb_on" data-param-rev="rev_verb_on" title="PWR">PWR</button>
+<div class="visual irph" style="left:752px;top:484px;width:240px;height:120px" data-visual="ir-placeholder">CONVOLUTION<br>FASE 8</div>
+<div class="combo" style="left:1012px;top:132px;width:126px;height:30px" data-param-fwd="gr_mode" data-param-rev="rev_gr_mode" title="Gran Mode"><span class="clabel">Gran Mode</span><span class="cval">Off ▾</span></div>
+<div class="combo" style="left:1142px;top:132px;width:126px;height:30px" data-param-fwd="gr_trigger" data-param-rev="rev_gr_trigger" title="Gran Trig"><span class="clabel">Gran Trig</span><span class="cval">Chance ▾</span></div>
+<button class="tbtn tog" style="left:1012px;top:166px;width:126px;height:30px" data-param-fwd="gr_manual" data-param-rev="rev_gr_manual" title="GRAB">GRAB</button>
+<div class="combo" style="left:1142px;top:166px;width:126px;height:30px" data-param-fwd="gr_len_note" data-param-rev="rev_gr_len_note" title="Gran Len"><span class="clabel">Gran Len</span><span class="cval">1/16 ▾</span></div>
+<div class="knob" style="left:1012px;top:204px;width:64px;height:90px" data-param-fwd="gr_chance" data-param-rev="rev_gr_chance" data-label="CHANCE" ><div class="dial"><div class="ptr"></div></div><div class="klabel">CHANCE</div><div class="kval">--</div></div>
+<div class="knob" style="left:1077px;top:204px;width:64px;height:90px" data-param-fwd="gr_env_thr" data-param-rev="rev_gr_env_thr" data-label="THR" ><div class="dial"><div class="ptr"></div></div><div class="klabel">THR</div><div class="kval">--</div></div>
+<div class="knob" style="left:1142px;top:204px;width:64px;height:90px" data-param-fwd="gr_repeats" data-param-rev="rev_gr_repeats" data-label="REPEATS" ><div class="dial"><div class="ptr"></div></div><div class="klabel">REPEATS</div><div class="kval">--</div></div>
+<div class="knob" style="left:1207px;top:204px;width:64px;height:90px" data-param-fwd="gr_decay" data-param-rev="rev_gr_decay" data-label="DECAY" ><div class="dial"><div class="ptr"></div></div><div class="klabel">DECAY</div><div class="kval">--</div></div>
+<div class="knob" style="left:1012px;top:298px;width:64px;height:90px" data-param-fwd="gr_time" data-param-rev="rev_gr_time" data-label="TIME" ><div class="dial"><div class="ptr"></div></div><div class="klabel">TIME</div><div class="kval">--</div></div>
+<div class="knob" style="left:1077px;top:298px;width:64px;height:90px" data-param-fwd="gr_pitch" data-param-rev="rev_gr_pitch" data-label="PITCH" ><div class="dial"><div class="ptr"></div></div><div class="klabel">PITCH</div><div class="kval">--</div></div>
+<div class="knob" style="left:1142px;top:298px;width:64px;height:90px" data-param-fwd="gr_flux" data-param-rev="rev_gr_flux" data-label="FLUX" ><div class="dial"><div class="ptr"></div></div><div class="klabel">FLUX</div><div class="kval">--</div></div>
+<div class="knob" style="left:1012px;top:392px;width:64px;height:90px" data-param-fwd="gr_xfade" data-param-rev="rev_gr_xfade" data-label="XFADE" ><div class="dial"><div class="ptr"></div></div><div class="klabel">XFADE</div><div class="kval">--</div></div>
+<div class="knob" style="left:1077px;top:392px;width:64px;height:90px" data-param-fwd="gr_mix" data-param-rev="rev_gr_mix" data-label="MIX" ><div class="dial"><div class="ptr"></div></div><div class="klabel">MIX</div><div class="kval">--</div></div>
+<button class="tbtn tog" style="left:1142px;top:392px;width:126px;height:30px" data-param-fwd="gr_interrupt" data-param-rev="rev_gr_interrupt" title="Interrupt">Interrupt</button>
+<div class="combo" style="left:1142px;top:426px;width:126px;height:30px" data-param-fwd="gr_time_note" data-param-rev="rev_gr_time_note" title="Gran Time Note"><span class="clabel">Gran Time Note</span><span class="cval">Free ▾</span></div>
+<button class="tbtn tog" style="left:1220px;top:110px;width:48px;height:20px" data-param-fwd="gr_on" data-param-rev="rev_gr_on" title="PWR">PWR</button>
+</div>
+</div>
+<div class="legend">Cobertura: 122 params (100 em pares FWD|REV via <span class="mono">data-param-fwd/rev</span> + 22 globais via <span class="mono">data-param</span>). Cinzento = visual/readout. Para propor layout novo, ver <span class="mono">assets/LAYOUT-TEMPLATE.md</span>.</div>
+</div>
+</body>
+</html>

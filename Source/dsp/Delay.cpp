@@ -123,14 +123,18 @@ void Delay::process(juce::AudioBuffer<float>& buffer)
         stub.bpm = bpm;
         revVoice.renderBlock(view, stub, bpm, false);
 
+        float* bp0 = buffer.getWritePointer(0);
+        float* bp1 = nCh > 1 ? buffer.getWritePointer(1) : nullptr;
+        const float* vp0 = view.getWritePointer(0);
+        const float* vp1 = nCh > 1 ? view.getWritePointer(1) : nullptr;
         for (int i = 0; i < n; ++i)
         {
             const float e = pw.next(); // 1× por amostra
             const float wetG = mix * e * fadeR;
             const float dryG = dry + (1.f - dry) * (1.f - e); // e=0 → dry total
-            for (int ch = 0; ch < nCh; ++ch)
-                buffer.getWritePointer(ch)[i] =
-                    buffer.getWritePointer(ch)[i] * dryG + view.getWritePointer(ch)[i] * wetG;
+            bp0[i] = bp0[i] * dryG + vp0[i] * wetG;
+            if (bp1 != nullptr)
+                bp1[i] = bp1[i] * dryG + vp1[i] * wetG;
         }
         return;
     }

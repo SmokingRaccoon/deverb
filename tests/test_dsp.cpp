@@ -205,6 +205,27 @@ int main()
               g.getCurrentStep());
     }
 
+    // --- 5b. Steps 1..16 livres: tabela choice->contagem + ciclo de 12 ---
+    {
+        CHECK(Gater::stepsCountFromChoice(0) == 8, "idx 0 = 8 (compat)");
+        CHECK(Gater::stepsCountFromChoice(1) == 16, "idx 1 = 16 (compat)");
+        CHECK(Gater::stepsCountFromChoice(2) == 12, "idx 2 = 12");
+        CHECK(Gater::stepsCountFromChoice(99) == 15, "fora de gama prende em 15");
+        Gater g;
+        g.prepare(48000.0);
+        g.setRate(TempoInfo::Note::N16);
+        g.setSteps(12);
+        g.setPattern(0xFFFF);
+        g.setSmooth(0.f);
+        g.setDepth(1.f);
+        g.setMix(1.f);
+        g.setTrigMode(Gater::TrigMode::Free);
+        g.setInternalBpm(120.0);
+        renderDC(g, t, 72000); // 3 beats exatos = 12 passos de 1/16
+        CHECK(g.getCurrentStep() == 11, "12 passos fazem wrap no 11 (got %d)",
+              g.getCurrentStep());
+    }
+
     // --- 6. Gater: note-on em modo Midi faz restart do padrão ---
     {
         Gater g;

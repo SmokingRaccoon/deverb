@@ -21,6 +21,8 @@ void Granular::reset()
     playDir = 1.0;
     playRate = 1.0;
     loopsDone = 0.0;
+    lastDecayLoops = -1.0;
+    cachedDecayGain = 1.f;
     activeLeft = releaseLeft = 0;
     outFade = 0.f;
     dryCut = 1.f;
@@ -245,12 +247,17 @@ void Granular::process(juce::AudioBuffer<float>& buffer, const TempoInfo& tempo)
                 sliceGate += (1.f - sliceGate) * sliceA;
             }
 
-            // Decay por volta (BeatRepeat e Stutter).
+            // Decay por volta (BeatRepeat e Stutter): o pow() só corre
+            // quando muda o nº de loops (era 1× por amostra).
             if (mode == Mode::BeatRepeat || mode == Mode::Stutter)
             {
-                float g = std::pow(decay, (float) loopsDone);
-                wetL *= g;
-                wetR *= g;
+                if (loopsDone != lastDecayLoops)
+                {
+                    lastDecayLoops = loopsDone;
+                    cachedDecayGain = std::pow(decay, (float) loopsDone);
+                }
+                wetL *= cachedDecayGain;
+                wetR *= cachedDecayGain;
             }
 
             wetL *= outFade;

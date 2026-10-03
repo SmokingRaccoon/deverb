@@ -1,0 +1,282 @@
+/* deVerb UI v4 -- "Espelho de Agua"
+   Escrito a mao (fonte de verdade dos tokens). Ler por generate-v4.py para validar contraste/minimos.
+   Regra: sem glow, sem gradientes decorativos, sem grao. Hierarquia por tamanho; cor so em areas pequenas e planas.
+   Texto >= 10px. Dials: disco >= 48px. */
+
+:root{
+  --paper:#ECE9E2; --paper-2:#E3DFD6; --paper-3:#D6D1C5;
+  --ink:#16171A;   --ink-2:#1F2125;   --ink-3:#2B2D32;
+  --lab-p:#55544F; --lab-i:#9A9892;
+  --hair-p:#C7C2B6; --hair-i:#3A3C42;
+  --gate:#EC563A; --delay:#2E9D6B; --verb:#3558C8; --gran:#F0B323;
+  --on-gate:#16171A; --on-delay:#16171A; --on-verb:#ECE9E2; --on-gran:#16171A;
+  --disc-m:48px; --disc-xl:76px;
+  --water:#8D8A82;
+  --sans:"Neue Haas Grotesk Text Pro","Helvetica Neue",Helvetica,"Nimbus Sans","Liberation Sans",Arial,sans-serif;
+  --mono:"JetBrains Mono","SF Mono","DejaVu Sans Mono","Liberation Mono",monospace;
+}
+
+/* ---------- polaridade: p/x = positivo (papel), n = negativo (tinta) ---------- */
+[data-pol="p"],[data-pol="x"]{
+  --bg:var(--paper); --bg2:var(--paper-2); --bg3:var(--paper-3);
+  --fg:var(--ink); --lab:var(--lab-p); --hair:var(--hair-p);
+  --line:color-mix(in srgb,var(--lab-p) 55%,transparent);
+}
+[data-pol="n"]{
+  --bg:var(--ink); --bg2:var(--ink-2); --bg3:var(--ink-3);
+  --fg:var(--paper); --lab:var(--lab-i); --hair:var(--hair-i);
+  --line:color-mix(in srgb,var(--lab-i) 55%,transparent);
+}
+/* acento por modulo (data-acc); global/brand = neutro (fg) */
+[data-acc="gate"]{--acc:var(--gate);--on-acc:var(--on-gate)}
+[data-acc="delay"]{--acc:var(--delay);--on-acc:var(--on-delay)}
+[data-acc="verb"]{--acc:var(--verb);--on-acc:var(--on-verb)}
+[data-acc="gran"]{--acc:var(--gran);--on-acc:var(--on-gran)}
+[data-acc="global"],[data-acc="brand"]{--acc:var(--fg);--on-acc:var(--bg)}
+
+/* ---------- pagina (nao faz parte do plugin) ---------- */
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:#0c0c0d;color:#cfcdc6;font:12px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
+.page{padding:28px 24px 44px}
+.meta,.legend{max-width:1280px;font-size:11px;color:#8a8882;line-height:1.7}
+.meta{margin:0 0 14px}.legend{margin-top:16px}
+.meta b{color:#e8e5dd}
+.mono{font-family:var(--mono);color:#b9b6ae}
+
+/* ---------- janela ---------- */
+#stage{
+  position:relative;width:1280px;height:624px;overflow:hidden;user-select:none;
+  background:linear-gradient(to bottom,var(--paper) 0,var(--paper) 334px,var(--ink) 334px,var(--ink) 100%);
+  box-shadow:0 30px 80px -30px #000;
+}
+.bg{position:absolute}
+.bg.hdr{background:var(--paper);border-bottom:1px solid var(--hair-p)}
+.bg.side.fwd{background:var(--paper-2);border-right:1px solid var(--hair-p)}
+.bg.side.rev{background:var(--ink-2);border-right:1px solid var(--hair-i)}
+.waterline{position:absolute;left:0;width:100%;height:1px;background:var(--water)}
+.ripples{position:absolute;left:0;width:100%;overflow:hidden;pointer-events:none}
+.ripple{position:absolute;top:52px;width:100px;height:100px;border:1.5px solid #fff;border-radius:50%;
+  mix-blend-mode:difference;opacity:.7;transform:translate(-50%,-50%) scale(.05,.01);
+  animation:rip 1.5s ease-out forwards}
+@keyframes rip{to{transform:translate(-50%,-50%) scale(9,1.7);opacity:0}}
+.w{position:absolute}
+
+/* so o modulo selecionado existe (4 estados) */
+#stage[data-sel="gate"]  .w[data-mod]:not([data-mod="gate"]),
+#stage[data-sel="delay"] .w[data-mod]:not([data-mod="delay"]),
+#stage[data-sel="verb"]  .w[data-mod]:not([data-mod="verb"]),
+#stage[data-sel="gran"]  .w[data-mod]:not([data-mod="gran"]){display:none!important}
+/* movimento espelhado: FWD sobe do meridiano, REV desce */
+.enter-fwd{animation:rise .18s ease-out}
+.enter-rev{animation:sink .18s ease-out}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes sink{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:none}}
+
+button{font:inherit;color:inherit}
+button:focus-visible,.dial:focus-visible{outline:2px solid var(--acc,var(--fg));outline-offset:2px}
+
+/* ---------- texto base ---------- */
+.klabel{font:600 10px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--lab);text-align:center;white-space:nowrap}
+.kval{font:500 11px var(--mono);color:var(--fg);text-align:center;white-space:nowrap}
+.cap{font:600 10px var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--lab);white-space:nowrap}
+
+/* ---------- DIAL ---------- */
+.dial{--d:var(--disc-m);--ring:58px;--ri:24.5px;--ro:29px;--off:5px;cursor:ns-resize;touch-action:none}
+.dial .ring{position:absolute;left:3px;top:0;width:var(--ring);height:var(--ring);border-radius:50%}
+.dial .ring::before,.dial .ring::after{
+  content:"";position:absolute;inset:0;border-radius:50%;
+  mask-image:radial-gradient(circle,transparent 0,transparent var(--ri),#000 var(--ri),#000 var(--ro),transparent var(--ro)),
+             conic-gradient(from -136deg,#000 0,#000 272deg,transparent 272deg);
+  mask-composite:intersect;
+}
+.dial .ring::before{background:repeating-conic-gradient(from -135.9deg,color-mix(in srgb,var(--lab) 55%,transparent) 0,color-mix(in srgb,var(--lab) 55%,transparent) 1.8deg,transparent 1.8deg,transparent 13.5deg)}
+.dial .ring::after{
+  background:repeating-conic-gradient(from -135.9deg,var(--fg) 0,var(--fg) 1.8deg,transparent 1.8deg,transparent 13.5deg);
+  mask-image:radial-gradient(circle,transparent 0,transparent var(--ri),#000 var(--ri),#000 var(--ro),transparent var(--ro)),
+             conic-gradient(from -136deg,#000 0,#000 272deg,transparent 272deg),
+             conic-gradient(from -136deg,#000 0,#000 calc(var(--ve,0) * 270deg + 1deg),transparent calc(var(--ve,0) * 270deg + 1deg));
+  mask-composite:intersect,intersect;
+}
+.dial .disc{position:absolute;left:var(--off);top:var(--off);width:var(--d);height:var(--d);border-radius:50%;background:var(--fg)}
+.dial .needle{position:absolute;left:var(--off);top:var(--off);width:var(--d);height:var(--d);pointer-events:none}
+.dial .needle::before{content:"";position:absolute;left:calc(50% - 1px);top:4px;width:2px;height:13px;border-radius:1px;background:var(--bg)}
+.dial .needle.own{transform:rotate(calc(-135deg + var(--v,0) * 270deg))}
+.dial .needle.ghost{transform:rotate(calc(-135deg + var(--vf,0) * 270deg))}
+.dial .needle.ghost::before{left:calc(50% - 2.5px);width:5px;height:13px;background:transparent;border:1px solid var(--bg);opacity:.8}
+.dial .needle.dot{transform:rotate(calc(-135deg + var(--ve,0) * 270deg))}
+.dial .needle.dot::before{top:-6px;left:calc(50% - 3px);width:6px;height:6px;border-radius:50%;background:var(--acc);box-shadow:0 0 0 1.5px var(--bg)}
+.dial:not(.linked) .needle.ghost{display:none}
+.dial .klabel{position:absolute;left:0;right:0;top:60px}
+.dial .kval{position:absolute;left:0;right:0;top:73px}
+.dial.muted{opacity:.38}
+
+/* dial no meridiano: etiqueta acima da linha (papel), valor abaixo (tinta); disco cortado pela linha de agua */
+.dial.mer .ring{top:14px}
+.dial.mer .klabel{top:0;color:var(--lab-p)}
+.dial.mer .kval{top:74px;color:var(--lab-i)}
+.dial.mer .disc,.dial.xl .disc{background:linear-gradient(to bottom,var(--ink) 0,var(--ink) 50%,var(--paper) 50%,var(--paper) 100%);box-shadow:0 0 0 1px var(--water)}
+.dial.mer .needle.own,.dial.xl .needle.own{mix-blend-mode:difference}
+.dial.mer .needle.own::before,.dial.xl .needle.own::before{background:#fff}
+.dial.mer .needle.dot::before,.dial.xl .needle.dot::before{box-shadow:0 0 0 1.5px var(--ink)}
+.dial.mer .ring::before,.dial.xl .ring::before{background:repeating-conic-gradient(from -135.9deg,var(--water) 0,var(--water) 1.8deg,transparent 1.8deg,transparent 13.5deg)}
+.dial.mer .ring::after,.dial.xl .ring::after{background:repeating-conic-gradient(from -135.9deg,#fff 0,#fff 1.8deg,transparent 1.8deg,transparent 13.5deg);mix-blend-mode:difference}
+/* MORPH (heroi) */
+.dial.xl{--d:var(--disc-xl);--ring:88px;--ri:38.5px;--ro:44px;--off:6px;--acc:var(--gate)}
+.dial.xl .ring{left:0;top:0}
+.dial.xl .needle::before{height:20px;width:3px;left:calc(50% - 1.5px);top:6px}
+.dial.xl .needle.dot::before{top:-8px;width:8px;height:8px;left:calc(50% - 4px)}
+
+/* ---------- SEGMENTADO / STEPPER / NUMBOX ---------- */
+.seg,.stepper,.numbox{
+  display:flex;align-items:stretch;height:28px;border:1px solid var(--line);border-radius:3px;overflow:hidden;
+  font:600 10px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--fg);background:transparent;
+}
+.seg .cap,.stepper .cap,.numbox .cap{display:flex;align-items:center;padding:0 9px;border-right:1px solid var(--line);flex:none}
+.seg button{
+  flex:1 1 auto;border:0;border-right:1px solid var(--line);background:transparent;color:inherit;font:inherit;
+  letter-spacing:inherit;text-transform:inherit;cursor:pointer;padding:0 8px;position:relative;
+}
+.seg button:last-child{border-right:0}
+.seg button:hover{background:color-mix(in srgb,var(--fg) 8%,transparent)}
+.seg button.on{background:var(--fg);color:var(--bg)}
+.seg button.on::after{content:"";position:absolute;left:8px;right:8px;bottom:3px;height:2px;background:var(--acc)}
+.stepper button{flex:none;width:28px;border:0;background:transparent;cursor:pointer;position:relative;padding:0}
+.stepper button:hover{background:color-mix(in srgb,var(--fg) 8%,transparent)}
+.stepper button::before{content:"";position:absolute;left:50%;top:50%;border-style:solid;border-color:transparent;transform:translate(-50%,-50%)}
+.stepper .prev::before{border-width:5px 7px 5px 0;border-right-color:var(--fg)}
+.stepper .next::before{border-width:5px 0 5px 7px;border-left-color:var(--fg)}
+.stepper .val{flex:1;display:flex;align-items:center;justify-content:center;border-left:1px solid var(--line);border-right:1px solid var(--line);
+  font:500 11px var(--mono);letter-spacing:0;text-transform:none;white-space:nowrap}
+.numbox{cursor:ns-resize}
+.numbox .val{flex:1;display:flex;align-items:center;justify-content:center;font:500 13px var(--mono);letter-spacing:0;text-transform:none}
+.seg.tether,.stepper.tether{opacity:.5;border-style:dashed}
+.seg.tether button,.stepper.tether button{cursor:not-allowed}
+/* legendas fora da caixa (meridiano) */
+.seg[data-cap-above],.stepper[data-cap-below]{overflow:visible}
+.seg[data-cap-above]>:first-child{border-radius:2px 0 0 2px}.seg[data-cap-above]>:last-child{border-radius:0 2px 2px 0}
+.seg[data-cap-above]::before{content:attr(data-cap-above);position:absolute;left:0;top:-14px;font:600 10px var(--sans);letter-spacing:.1em;color:var(--lab-p)}
+.stepper[data-cap-below]::after{content:attr(data-cap-below);position:absolute;left:0;bottom:-14px;font:600 10px var(--sans);letter-spacing:.1em;color:var(--lab-i)}
+
+/* ---------- TECLA ---------- */
+.key{
+  display:flex;align-items:center;justify-content:center;gap:6px;padding:0;border:1px solid var(--line);border-radius:3px;
+  background:transparent;color:var(--fg);font:700 10px var(--sans);letter-spacing:.1em;text-transform:uppercase;cursor:pointer;
+}
+.key:hover{background:color-mix(in srgb,var(--fg) 8%,transparent)}
+.key.on{background:var(--acc);color:var(--on-acc);border-color:var(--acc)}
+.key.solid{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.key.tether{opacity:.5;border-style:dashed}
+/* PWR: seta do motor + lampada */
+.key.pwr.on{background:transparent;color:var(--fg);border-color:var(--line)}
+.key .arr{width:0;height:0;border-style:solid;border-color:transparent}
+.key.pwr.fwd .arr{border-width:4px 0 4px 6px;border-left-color:var(--fg)}
+.key.pwr.rev .arr{border-width:4px 6px 4px 0;border-right-color:var(--fg)}
+.key .lamp,.viz .lamp{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--lab);display:inline-block;flex:none}
+.key.pwr.on .lamp{background:var(--acc);border-color:var(--acc)}
+/* LINK: dois aneis; ligado = entrelacados na cor do modulo */
+.key.link{border-color:var(--water);background:linear-gradient(to bottom,var(--paper) 0,var(--paper) 50%,var(--ink) 50%,var(--ink) 100%)}
+.key.link.on{background:linear-gradient(to bottom,var(--paper) 0,var(--paper) 50%,var(--ink) 50%,var(--ink) 100%);border-color:var(--water)}
+.key.link .knot{position:relative;width:22px;height:10px;mix-blend-mode:difference}
+.key.link .knot::before,.key.link .knot::after{content:"";position:absolute;top:0;width:10px;height:10px;border:1.5px solid #fff;border-radius:50%}
+.key.link .knot::before{left:0}.key.link .knot::after{left:12px}
+.key.link.on .knot{mix-blend-mode:normal}
+.key.link.on .knot::before,.key.link.on .knot::after{border:2px solid var(--acc)}
+.key.link.on .knot::after{left:7px}
+/* LINK ALL (sob a linha, polaridade negativa) */
+.key.link-all.on{background:var(--paper);color:var(--ink);border-color:var(--paper)}
+/* THROW: a pedra atirada para a agua; corte pela linha de agua */
+.key.throw{border-color:var(--water);background:linear-gradient(to bottom,var(--ink) 0,var(--ink) 50%,var(--paper) 50%,var(--paper) 100%);font-size:11px}
+.key.throw span.t{display:flex;align-items:center;justify-content:center;width:100%;height:100%;
+  background:linear-gradient(to bottom,var(--paper) 0,var(--paper) 50%,var(--ink) 50%,var(--ink) 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.key.throw.fire{transform:scale(.96)}
+
+/* ---------- PASSOS (grupos de 4, convencao 808/909) ---------- */
+.stp{
+  border:0;border-radius:2px;background:var(--bg3);color:var(--lab);font:500 10px var(--mono);cursor:pointer;
+  display:flex;align-items:flex-end;justify-content:center;padding:0 0 6px;
+}
+.stp.g1{background:var(--bg2)}
+.stp.on{background:var(--acc);color:var(--on-acc)}
+.stp.play::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--fg)}
+.stp.tether{opacity:.55;cursor:not-allowed}
+.stp.dis{opacity:.3}
+
+/* ---------- PEDRAS (modulos sobre a linha de agua) ---------- */
+.tile{border:0;background:transparent;padding:0;cursor:pointer;color:var(--ink)}
+.tile .tname{position:absolute;left:56px;top:4px;font:700 10px var(--sans);letter-spacing:.14em;color:var(--lab-p)}
+.tile .glyph{position:absolute;left:56px;top:22px;width:44px;height:44px;overflow:visible}
+.tile .glyph .obj{fill:none;stroke:var(--ink);stroke-width:1.5}
+.tile .glyph .obj .hole{stroke:none}
+.tile .glyph .refl{fill:none;stroke:var(--paper);stroke-width:1.5;opacity:.42}
+.tile .glyph .refl .hole{stroke:none}
+.tile.sel .glyph .obj{fill:var(--acc);stroke:var(--ink)}
+.tile.sel .glyph .obj .hole{fill:var(--paper)}
+.tile.sel .glyph .refl{fill:var(--acc);stroke:none;opacity:.55}
+.tile.sel .glyph .refl .hole{fill:var(--ink)}
+.tile .glyph .rw{transform-box:fill-box;transform-origin:50% 0}
+.tile.sel .glyph .rw{animation:wob 2.6s ease-in-out infinite}
+@keyframes wob{0%,100%{transform:skewX(calc(var(--amp,2deg) * -1))}50%{transform:skewX(var(--amp,2deg))}}
+.tile.sel::after{content:"";position:absolute;left:52px;right:6px;top:43px;height:2px;background:var(--acc)}
+.tile:hover .tname{color:var(--ink)}
+.tile.moving{transition:left .28s cubic-bezier(.3,.7,.2,1)}
+.w.moving{transition:left .28s cubic-bezier(.3,.7,.2,1)}
+
+/* ---------- visuais ---------- */
+.viz{color:var(--fg)}
+.viz svg{display:block;overflow:visible}
+.viz .hair{stroke:var(--line);stroke-width:1}
+.viz .wave{stroke:var(--fg);stroke-width:1.5;fill:none}
+.viz .now{stroke:var(--fg);stroke-width:1.5}
+.viz .t{font:600 10px var(--sans);letter-spacing:.08em;fill:var(--lab)}
+.viz .tick{stroke:var(--lab);stroke-width:1}
+.viz .grid{stroke:var(--line);stroke-width:1}
+.viz .win{fill:var(--bg3)}
+.viz .readhead{transform-box:view-box;animation:sweep 1s linear infinite}
+.viz .readhead line{stroke:var(--fg);stroke-width:1.5}
+.viz .readhead path{fill:var(--fg)}
+@keyframes sweep{from{transform:translateX(288px)}to{transform:translateX(calc(288px - var(--capw,144px)))}}
+.viz .tap{fill:var(--acc)}
+.viz .tap.dry{fill:none;stroke:var(--acc);stroke-width:1.5}
+.viz .shard{fill:var(--acc)}
+.viz .shard.o{fill:none;stroke:var(--fg);stroke-width:1}
+.viz .mglyph .obj,.viz .mglyph *{fill:var(--acc);stroke:var(--fg);stroke-width:1}
+.viz .mglyph .hole{fill:var(--bg);stroke:none}
+
+.viz.title{display:flex;align-items:center;gap:10px;font:700 20px var(--sans);letter-spacing:-.03em;color:var(--ink)}
+.viz.title .mark{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--ink);flex:none;
+  background:linear-gradient(to bottom,var(--ink) 0,var(--ink) 50%,transparent 50%,transparent 100%)}
+.viz.mtitle{display:flex;align-items:center;gap:10px}
+.viz.mtitle b{font:700 11px var(--sans);letter-spacing:.16em;color:var(--fg)}
+.viz.engine{display:flex;align-items:center;gap:8px}
+.viz.engine b{font:700 24px var(--sans);letter-spacing:-.02em;color:var(--fg)}
+.viz.engine .dir{width:0;height:0;border-style:solid;border-color:transparent}
+.viz.engine.fwd .dir{border-width:6px 0 6px 9px;border-left-color:var(--fg)}
+.viz.engine.rev .dir{border-width:6px 9px 6px 0;border-right-color:var(--fg)}
+.viz.readout{display:flex;align-items:center}
+.viz.readout.right{justify-content:flex-end}
+.viz.readout .kval{font:500 12px var(--mono);color:var(--fg)}
+.viz.gate-big{display:flex;align-items:center;justify-content:flex-end;gap:4px;border-left:1px solid var(--line);padding-right:4px}
+.viz.gate-big .kval{font:500 44px/1 var(--mono);letter-spacing:-.04em}
+.viz.gate-big .of{font:500 16px var(--mono);color:var(--lab);align-self:flex-end;margin-bottom:12px}
+.viz.led{display:flex;align-items:center;justify-content:flex-end;gap:8px;font:700 10px var(--mono);letter-spacing:.1em;color:var(--fg)}
+.viz.bpm-src{display:flex;align-items:center;gap:8px;font:700 10px var(--mono);letter-spacing:.1em;color:var(--lab)}
+.viz.led.hot .lamp{background:var(--acc);border-color:var(--acc)}
+.viz.bpm-src .lamp{background:var(--lab)}
+.viz.morph-read{display:flex;flex-direction:column;gap:2px;justify-content:center}
+.viz.morph-read .klabel,.viz.morph-read .kval{text-align:left}
+.viz.morph-read .klabel{color:var(--lab-p)}
+.viz.morph-read .kval{font-size:14px}
+.viz.ir{display:flex;align-items:center;justify-content:center;text-align:center;border:1px dashed var(--line);
+  font:600 10px/1.8 var(--sans);letter-spacing:.14em;color:var(--lab)}
+
+/* ---------- toast (explica o link) ---------- */
+.toast{position:absolute;z-index:30;display:flex;align-items:center;gap:12px;padding:9px 12px;background:var(--ink);color:var(--paper);
+  border:1px solid var(--paper);font:600 10px var(--sans);letter-spacing:.08em;text-transform:uppercase}
+.toast[hidden]{display:none}
+.toast button{border:1px solid var(--paper);background:var(--paper);color:var(--ink);font:700 10px var(--sans);letter-spacing:.1em;padding:4px 8px;cursor:pointer}
+
+#qa{position:fixed;left:0;top:0;margin:0;padding:8px;background:#000;color:#0f0;font:11px var(--mono);z-index:99;white-space:pre}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}

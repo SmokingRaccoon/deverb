@@ -82,7 +82,11 @@ V4ModulePanel::V4ModulePanel(DeVerbProcessor& proc, const juce::String& engine, 
         for (auto& fp : Gater::factoryPatterns) { patNames.add(fp.name); patBits.push_back(fp.bits); }
         addStepper("pattern", patNames, "PATTERN", 372, 120, 256, patBits);
         addStepper("rate", notesArr(), "RATE", 640, 120, 256);
-        addSeg("steps", { "8", "16" }, "STEPS", 372, 156, 152);
+        {
+            juce::StringArray sn;
+            for (auto n : Gater::stepNames) sn.add(n);
+            addStepper("steps", sn, "STEPS", 372, 156, 152);
+        }
         addSeg("trig", { "Host", "Midi", "TRANS", "Free" }, "TRIG", 536, 156, 360);
     }
     else if (mod == "delay")
@@ -419,7 +423,7 @@ void V4ModulePanel::updateLinkState()
             juce::String pidUse = linked ? "fwd_gate_pattern" : "rev_gate_pattern";
             juce::String sidUse = linked ? "fwd_gate_steps" : "rev_gate_steps";
             bits = (int)getFloat(proc_.apvts, pidUse);
-            steps = getFloat(proc_.apvts, sidUse) > 0.5f ? 16 : 8;
+            steps = Gater::stepsCountFromChoice((int) getFloat(proc_.apvts, sidUse));
             for (auto& sb : stepBtns_)
             {
                 // REV espelha índice 15-i (corre ao contrário)
@@ -437,7 +441,8 @@ void V4ModulePanel::updateLinkState()
         if (mod_ == "gate")
         {
             int bits = (int)getFloat(proc_.apvts, "fwd_gate_pattern");
-            int steps = getFloat(proc_.apvts, "fwd_gate_steps") > 0.5f ? 16 : 8;
+            int steps = Gater::stepsCountFromChoice(
+                (int) getFloat(proc_.apvts, "fwd_gate_steps"));
             for (auto& sb : stepBtns_)
             {
                 sb.b->setToggleState(((bits >> sb.idx) & 1), juce::dontSendNotification);
@@ -452,7 +457,7 @@ void V4ModulePanel::updateLinkState()
         bool isRev = engine_ == "rev";
         juce::String pidUse = (isRev && linked) ? "fwd_gate_pattern" : (isRev ? "rev_gate_pattern" : "fwd_gate_pattern");
         juce::String sidUse = (isRev && linked) ? "fwd_gate_steps" : (isRev ? "rev_gate_steps" : "fwd_gate_steps");
-        int steps = getFloat(proc_.apvts, sidUse) > 0.5f ? 16 : 8;
+        int steps = Gater::stepsCountFromChoice((int) getFloat(proc_.apvts, sidUse));
         int play = isRev ? proc_.getRevGateStep() : proc_.getGateStep();
         if (auto* v = findViz(V4Viz::GateBig))
             v->setText(juce::String::formatted("%02d", play + 1) + "/" + juce::String(steps));

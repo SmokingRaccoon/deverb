@@ -9,7 +9,7 @@ class BeatRuler : public juce::Component
 public:
     BeatRuler() = default;
 
-    void setNumSteps(int s)    { numSteps = (s == 8) ? 8 : 16; repaint(); }
+    void setNumSteps(int s)    { numSteps = juce::jlimit(1, 16, s); repaint(); }
     void setPattern(int bits)  { pattern = bits & 0xFFFF; repaint(); }
     void setActiveStep(int s)  { activeStep = s; repaint(); }
 

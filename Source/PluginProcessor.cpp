@@ -59,8 +59,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout DeVerbProcessor::createParam
     // --- Fase 2: gater FWD (IDs congelados a partir do v1) ---
     layout.add(std::make_unique<juce::AudioParameterChoice>(
         "fwd_gate_rate", "FWD Gate Rate", TempoInfo::noteNames(), 3)); // 3 = "1/16"
-    layout.add(std::make_unique<juce::AudioParameterChoice>(
-        "fwd_gate_steps", "FWD Gate Steps", juce::StringArray { "8", "16" }, 1));
+    // Steps 1..16 livres (0="8" e 1="16" congelados para compatibilidade).
+    {
+        juce::StringArray steps;
+        for (auto n : Gater::stepNames) steps.add(n);
+        layout.add(std::make_unique<juce::AudioParameterChoice>(
+            "fwd_gate_steps", "FWD Gate Steps", steps, 1));
+    }
     layout.add(std::make_unique<juce::AudioParameterInt>(
         "fwd_gate_pattern", "FWD Gate Pattern", 0, 65535, 0x1111));
     layout.add(std::make_unique<juce::AudioParameterFloat>(
@@ -185,8 +190,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout DeVerbProcessor::createParam
     // Gate REV (defaults = FWD para arranque coerente):
     layout.add(std::make_unique<juce::AudioParameterChoice>(
         "rev_gate_rate", "REV Gate Rate", TempoInfo::noteNames(), 3));
-    layout.add(std::make_unique<juce::AudioParameterChoice>(
-        "rev_gate_steps", "REV Gate Steps", juce::StringArray { "8", "16" }, 1));
+    {
+        juce::StringArray steps;
+        for (auto n : Gater::stepNames) steps.add(n);
+        layout.add(std::make_unique<juce::AudioParameterChoice>(
+            "rev_gate_steps", "REV Gate Steps", steps, 1));
+    }
     layout.add(std::make_unique<juce::AudioParameterInt>(
         "rev_gate_pattern", "REV Gate Pattern", 0, 65535, 0x1111));
     layout.add(std::make_unique<juce::AudioParameterFloat>(
@@ -306,6 +315,7 @@ void DeVerbProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     revDelay.prepare(sampleRate, samplesPerBlock);
     revVerb.prepare(sampleRate, samplesPerBlock);
     revGran.prepare(sampleRate);
+    revGran.reseed(0x54321); // descorrelaciona os glitches FWD/REV
     revBuf.setSize(2, samplesPerBlock, false, false, true);
     fwdBuf.setSize(2, samplesPerBlock, false, false, true);
     smoothInput.reset(sampleRate, 0.03);
@@ -328,6 +338,13 @@ void DeVerbProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     dspSr = sampleRate;
     limRelCoef = std::exp(-1.f / (0.05f * (float) sampleRate));
     scopeFifo.reset();
+    // Relógio e UIs atómicas recomeçam (evita saltos de XFADE/playhead).
+    procBeats = 0.0;
+    gateStepUi.store(0);
+    revGateStepUi.store(0);
+    granActiveUi.store(false);
+    revGranActiveUi.store(false);
+    revReadPosUi.store(0.f);
 }
 
 void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -426,7 +443,8 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
     // --- Fase 2: gater ANTES do delay (tails não são cortados). ---
     fwdGate.setRate((TempoInfo::Note) (int) apvts.getRawParameterValue("fwd_gate_rate")->load());
-    fwdGate.setSteps(apvts.getRawParameterValue("fwd_gate_steps")->load() > 0.5f ? 16 : 8);
+    fwdGate.setSteps(Gater::stepsCountFromChoice(
+        (int) apvts.getRawParameterValue("fwd_gate_steps")->load()));
     fwdGate.setPattern((int) apvts.getRawParameterValue("fwd_gate_pattern")->load());
     fwdGate.setSmooth(apvts.getRawParameterValue("fwd_gate_smooth")->load());
     fwdGate.setDepth(apvts.getRawParameterValue("fwd_gate_depth")->load());
@@ -534,6 +552,8 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     granActiveUi.store(fwdGran.isActive());
 
     // --- Fase 5: motor REV paralelo (cadeia gémea sobre sinal reverso). ---
+    if (revMode == 0)
+        revReadPosUi.store(0.f); // sem leitor, sem cabeça fantasma na UI
     if (revSource == 1 && revMode != 0)
         revEngine.recordBlock(fwdBuf); // captura PostFWD (= saída da cadeia)
 
@@ -590,7 +610,8 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
         // Gate REV (mesma ordem da FWD).
         revGate.setRate((N) RL::resolveDiscrete(lGate, (int) RV("fwd_gate_rate"), (int) RV("rev_gate_rate")));
-        revGate.setSteps(RL::resolveDiscrete(lGate, (int) RV("fwd_gate_steps"), (int) RV("rev_gate_steps")) > 0 ? 16 : 8);
+        revGate.setSteps(Gater::stepsCountFromChoice(
+            RL::resolveDiscrete(lGate, (int) RV("fwd_gate_steps"), (int) RV("rev_gate_steps"))));
         revGate.setPattern(RL::resolveDiscrete(lGate, (int) RV("fwd_gate_pattern"), (int) RV("rev_gate_pattern")));
         revGate.setSmooth(RL::resolveContinuous(lGate, morph, RV("fwd_gate_smooth"), RV("rev_gate_smooth"), 0.f, 1.f));
         revGate.setDepth(RL::resolveContinuous(lGate, morph, RV("fwd_gate_depth"), RV("rev_gate_depth"), 0.f, 1.f));
@@ -726,6 +747,13 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     const float limCeil = 0.891251f; // -1 dBFS
     const float limRel = limRelCoef;
 
+    // Ponteiros fora do loop (getWritePointer por amostra = overhead).
+    float* outPtr[2] = { buffer.getWritePointer(0),
+                         nCh > 1 ? buffer.getWritePointer(1) : nullptr };
+    const float* fwdPtr[2] = { fwdBuf.getReadPointer(0),
+                               fwdBuf.getNumChannels() > 1 ? fwdBuf.getReadPointer(1) : nullptr };
+    const float* revPtr[2] = { (revMode != 0) ? revBuf.getReadPointer(0) : nullptr,
+                               (revMode != 0 && revBuf.getNumChannels() > 1) ? revBuf.getReadPointer(1) : nullptr };
     for (int i = 0; i < n; ++i)
     {
         const float gM = smoothMaster.getNextValue();
@@ -734,17 +762,17 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         float mixed[2] = { 0.f, 0.f };
         for (int ch = 0; ch < nCh; ++ch)
         {
-            float dry = buffer.getWritePointer(ch)[i];
-            float fw = fwdBuf.getWritePointer(ch)[i];
-            float rv = (revMode != 0) ? revBuf.getWritePointer(ch)[i] : 0.f;
+            float dry = outPtr[ch][i];
+            float fw = fwdPtr[ch] != nullptr ? fwdPtr[ch][i] : fwdPtr[0][i];
+            float rv = (revPtr[ch] != nullptr) ? revPtr[ch][i] : 0.f;
             mixed[ch] = (dry * (1.f - gF) + fw * gF + rv * gR) * gM;
         }
         float peak = juce::jmax(std::abs(mixed[0]), nCh > 1 ? std::abs(mixed[1]) : 0.f);
         limPeak = (peak > limPeak) ? peak : limPeak * limRel;
         float gL = (limPeak > limCeil) ? limCeil / limPeak : 1.f;
-        buffer.getWritePointer(0)[i] = mixed[0] * gL;
+        outPtr[0][i] = mixed[0] * gL;
         if (nCh > 1)
-            buffer.getWritePointer(1)[i] = mixed[1] * gL;
+            outPtr[1][i] = mixed[1] * gL;
     }
 }
 

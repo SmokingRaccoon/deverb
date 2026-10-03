@@ -19,7 +19,17 @@ public:
     void reset();
 
     void setRate(TempoInfo::Note n)  { rate = n; }
-    void setSteps(int s)             { numSteps = (s == 8) ? 8 : 16; }
+    void setSteps(int s)             { numSteps = juce::jlimit(1, 16, s); }
+    // Contagens de steps 1..16, livres (0 excluído: era silêncio garantido).
+    // Os índices 0="8" e 1="16" ficam para compatibilidade de restauro.
+    static constexpr const char* stepNames[16] =
+        { "8","16","12","6","4","3","2","1","5","7","9","10","11","13","14","15" };
+    static constexpr int stepCounts[16] =
+        { 8,16,12,6,4,3,2,1,5,7,9,10,11,13,14,15 };
+    static int stepsCountFromChoice(int idx)
+    {
+        return stepCounts[(size_t) juce::jlimit(0, 15, idx)];
+    }
     void setPattern(int bits)        { pattern = (uint16_t) (bits & 0xFFFF); }
     void setSmooth(float s);         // 0..1 (faca..suave)
     void setDepth(float d)           { depth = juce::jlimit(0.f, 1.f, d); }
@@ -51,6 +61,10 @@ public:
         { "16ths",      0xFFFF }, // tudo aberto (só pan/acento)
         { "Saw Up",     0x844B }, // densidade a subir
         { "Euclid 5",   0x1249 }, // 5 em 16
+        { "Tresillo",   0x1449 }, // 3-3-2: passos 1,4,7,11,13
+        { "Cinquillo",  0x6DAD }, // passos 1,3,4,6,8,9,11,12,14,15
+        { "Euclid 3",   0x0841 }, // 3 em 16: passos 1,7,12
+        { "Euclid 7",   0x54A9 }, // 7 em 16
     };
 
 private:
