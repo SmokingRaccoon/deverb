@@ -127,7 +127,7 @@ módulo da surpresa; trabalha por último, sobre o som já com espaço.
 | REPEATS | `gr_repeats` | knob 1–16 | 4 | Número de repetições (BeatRepeat/Stutter). |
 | DECAY | `gr_decay` | knob 0.5–0.99 | 0.85 | Quanto cada repetição perde de volume. |
 | TIME | `gr_time` / nota | knob 60–8000 ms + combo | 250 / Free | Duração do glitch (modos não-BeatRepeat). |
-| PITCH | `gr_pitch` | knob −12–+12 st | +12 | Tom das repetições (modo Pitch). |
+| PITCH | `gr_pitch` | knob −12–+12 st | +12 | Tom das repetições (modo Pitch). Interpolação linear = estética lo-fi assumida (sem anti-alias). |
 | FLUX | `gr_flux` | knob 0–1 | 0.30 | Re-aleatorização interna (variação orgânica). |
 | XFADE | `gr_xfade` | knob 1–50 ms | 8.0 | Crossfade das emendas (anti-cliques). |
 | MIX | `gr_mix` | knob 0–1 | 0.50 | Quantidade de glitch no som. |
@@ -152,7 +152,7 @@ O resultado soma-se como uma cauda decorativa (reverse throws).
 | Janela | `rev_capture` | combo | 2 beats | Tamanho da captura: 2, 3 ou 4 beats. |
 | RATE | `rev_rate` | knob 0.25–2× | 1.00 | Velocidade do reverso (varispeed, pitch acompanha): <1 atrasa e agrava, >1 acelera e aguça. |
 | LFO | `rev_lfo` | knob 0–1 | 0.00 | Vagueio lento do rate (reverse orgânico, quase-chorus). |
-| THROW | `rev_throw` | botão | OFF | Dispara uma cauda (modo Throw; também dispara por nota MIDI). |
+| THROW | `rev_throw` | botão | OFF | Dispara uma cauda (modo Throw; também dispara por nota MIDI). O preset Reverse Throw fá-lo disparar ao carregar (audition intencional). |
 | DUCK | `rev_duck` | knob 0–1 | 0.30 | Baixa a cauda quando há sinal novo (limpeza automática). |
 | T-DLY | `trim_delay` | knob 0.25–4× | 1.00 | Multiplica o tempo do delay REV vs. FWD. |
 | T-DEC | `trim_decay` | knob 0.25–2× | 1.00 | Multiplica a cauda do reverb REV vs. FWD. |
