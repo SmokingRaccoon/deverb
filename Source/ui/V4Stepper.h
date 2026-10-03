@@ -19,6 +19,8 @@ public:
     {
         prev_.onClick = [this] { step(-1); };
         next_.onClick = [this] { step(+1); };
+        prev_.getProperties().set("nobg", true);
+        next_.getProperties().set("nobg", true);
         addAndMakeVisible(prev_);
         addAndMakeVisible(next_);
         if (param_ != nullptr)
@@ -31,7 +33,11 @@ public:
     }
 
     std::function<void(V4Stepper*)> onTetherClick;
-    void setTethered(bool t, int fwdIdx = -1) { tethered_ = t; fwdIdx_ = fwdIdx; repaint(); }
+    void setTethered(bool t, int fwdIdx = -1)
+    {
+        if (t == tethered_ && fwdIdx == fwdIdx_) return;
+        tethered_ = t; fwdIdx_ = fwdIdx; repaint();
+    }
     void setDark(bool d) { dark_ = d; repaint(); }
     int getIndex() const { return idx_; }
     void setRole(const juce::String& r) { role_ = r; }

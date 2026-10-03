@@ -43,6 +43,7 @@ public:
 
     // Leitura p/ UI (Timer): passo atual do gate e BPM efetivo.
     int getGateStep() const { return gateStepUi.load(); }
+    int getRevGateStep() const { return revGateStepUi.load(); }
     float getUiBpm() const  { return bpmUi.load(); }
     bool isTempoFromHost() const { return fromHostUi.load(); }
     // Leitura p/ UI (Timer): granular ativo ou não.
@@ -78,6 +79,7 @@ private:
     double dspSr = 44100.0;
     std::atomic<bool> granActiveUi { false };
     std::atomic<int> gateStepUi { 0 };
+    std::atomic<int> revGateStepUi { 0 };
     std::atomic<float> bpmUi { 120.f };
     std::atomic<bool> fromHostUi { false };
     // v4 scope FIFO (escrita no audio thread, leitura na message thread)

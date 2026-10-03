@@ -23,8 +23,9 @@ public:
         setMouseCursor(juce::MouseCursor::PointingHandCursor);
     }
 
-    void setTethered(bool t) { tethered_ = t; repaint(); }
+    void setTethered(bool t) { if (t != tethered_) { tethered_ = t; repaint(); } }
     void setAccent(const juce::Colour& a) { accent_ = a; repaint(); }
+    void setDark(bool d) { dark_ = d; repaint(); }
     bool getState() const { return on_; }
     void setState(bool s, bool notify = true)
     {
@@ -68,7 +69,7 @@ public:
             g.setColour(juce::Colour(0xff16171A));
             g.fillRoundedRectangle(juce::Rectangle<float>(r.getX(), r.getY()+r.getHeight()/2, r.getWidth(), r.getHeight()/2), 3.f);
         }
-        else if (on)
+        else if (on && (kind_ == Normal || kind_ == LinkAll))
         {
             g.setColour(accent_);
             g.fillRoundedRectangle(r, 3.f);
@@ -84,43 +85,67 @@ public:
         else g.drawRoundedRectangle(r, 3.f, 1.f);
 
         setAlpha(tethered_ ? 0.55f : 1.f);
-        juce::Colour fg = on ? (kind_==Normal||kind_==Throw||kind_==Link ? juce::Colour(0xff16171A) : juce::Colours::black) : juce::Colour(0xff16171A);
-        if (kind_ == Link || kind_ == Throw) fg = juce::Colours::white; // difference aprox: usa branco com blend? mantém legível
+        // fg por polaridade (teclas REV e LinkAll vivem sobre tinta)
+        juce::Colour fg = dark_ ? juce::Colour(0xffECE9E2) : juce::Colour(0xff16171A);
+        juce::Colour dim = dark_ ? juce::Colour(0xff9A9892) : juce::Colour(0xff55544F);
+
+        // desenha o miolo (sem texto) com uma cor dada — usado nos 2 passes
+        // das teclas cortadas pela linha de água (THROW, LINK).
+        auto drawCore = [&](juce::Colour c)
+        {
+            if (kind_ == PwrFwd || kind_ == PwrRev)
+            {
+                // seta + lâmpada (sem fill de fundo: discreto como no mockup)
+                float cx = r.getCentreX(), cy = r.getCentreY();
+                juce::Path arr;
+                if (kind_ == PwrFwd) arr.addTriangle(cx-8, cy-4, cx-8, cy+4, cx-2, cy);
+                else arr.addTriangle(cx+8, cy-4, cx+8, cy+4, cx+2, cy);
+                g.setColour(c);
+                g.fillPath(arr);
+                g.setColour(on ? accent_ : dim);
+                if (on) g.fillEllipse(cx+2, cy-4, 8, 8);
+                else g.drawEllipse(cx+2, cy-4, 8, 8, 1.5f);
+            }
+            else if (kind_ == Link)
+            {
+                // dois anéis: separados = OFF, entrelaçados no acento = ON
+                auto c0 = r.getCentre();
+                g.setColour(on ? accent_ : c);
+                float lw = on ? 2.f : 1.5f;
+                g.drawEllipse(c0.x-11, c0.y-5, 10, 10, lw);
+                g.drawEllipse(c0.x + (on ? -4 : 1), c0.y-5, 10, 10, lw);
+            }
+            else
+            {
+                // ON com fill de acento: texto com contraste (papel no índigo).
+                juce::Colour tc = c;
+                if (on && (kind_ == Normal || kind_ == LinkAll))
+                    tc = accent_.getPerceivedBrightness() < 0.4f
+                       ? juce::Colour(0xffECE9E2) : juce::Colour(0xff16171A);
+                g.setColour(tc);
+                g.setFont(10.f);
+                g.drawFittedText(text_, getLocalBounds(), juce::Justification::centred, 1);
+            }
+        };
+
         if (kind_ == Link || kind_ == Throw)
         {
-            // texto com mix: desenha 2x (tinta sobre papel e vice-versa) — simplificado: contorno escuro
-            g.setColour(juce::Colour(0xff16171A));
-            g.setFont(10.f);
-        }
-
-        if (kind_ == PwrFwd || kind_ == PwrRev)
-        {
-            // seta + lâmpada
-            float cx = r.getCentreX(), cy = r.getCentreY();
-            juce::Path arr;
-            if (kind_ == PwrFwd) arr.addTriangle(cx-8, cy-4, cx-8, cy+4, cx-2, cy);
-            else arr.addTriangle(cx+8, cy-4, cx+8, cy+4, cx+2, cy);
-            g.setColour(fg);
-            g.fillPath(arr);
-            g.setColour(on ? accent_ : juce::Colour(0xff55544F));
-            if (on) g.fillEllipse(cx+2, cy-4, 8, 8);
-            else g.drawEllipse(cx+2, cy-4, 8, 8, 1.5f);
-        }
-        else if (kind_ == Link)
-        {
-            // dois anéis entrelaçados
-            auto c = r.getCentre();
-            g.setColour(on ? accent_ : juce::Colours::white);
-            float lw = on ? 2.f : 1.5f;
-            g.drawEllipse(c.x-11, c.y-5, 10, 10, lw);
-            g.drawEllipse(c.x + (on ? -4 : 1), c.y-5, 10, 10, lw);
-            if (!text_.isEmpty() && text_ != " ") {}
+            // 2 passes com clip (difference do mockup): tinta em cima, papel
+            // em baixo — legível nas duas metades.
+            auto bounds = getLocalBounds();
+            g.saveState();
+            g.reduceClipRegion(0, 0, bounds.getWidth(), bounds.getHeight()/2);
+            drawCore(juce::Colour(0xff16171A));
+            g.restoreState();
+            g.saveState();
+            g.reduceClipRegion(0, bounds.getHeight()/2, bounds.getWidth(),
+                               bounds.getHeight() - bounds.getHeight()/2);
+            drawCore(juce::Colour(0xffECE9E2));
+            g.restoreState();
         }
         else
         {
-            g.setColour(on ? juce::Colours::black : juce::Colour(0xff16171A));
-            g.setFont(10.f);
-            g.drawFittedText(text_, getLocalBounds(), juce::Justification::centred, 1);
+            drawCore(fg);
         }
     }
 
@@ -132,4 +157,5 @@ private:
     std::unique_ptr<juce::ParameterAttachment> attach;
     bool on_ = false;
     bool tethered_ = false;
+    bool dark_ = false;
 };

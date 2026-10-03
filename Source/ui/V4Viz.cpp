@@ -1,4 +1,5 @@
 #include "V4Viz.h"
+#include "WaterLnF.h"
 #include "../PluginProcessor.h"
 
 V4Viz::V4Viz(Kind k, DeVerbProcessor* p, const juce::String& mod, const juce::String& txt)
@@ -7,34 +8,58 @@ V4Viz::V4Viz(Kind k, DeVerbProcessor* p, const juce::String& mod, const juce::St
 void V4Viz::paint(juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat();
-    auto ink = juce::Colour(0xff16171A);
-    auto paper = juce::Colour(0xffECE9E2);
-    auto labP = juce::Colour(0xff55544F);
+    // Polaridade p/n (FWD papel / REV tinta): tinta sobre tinta é invisível.
+    auto ink = dark_ ? juce::Colour(0xffECE9E2) : juce::Colour(0xff16171A);
+    auto paper = dark_ ? juce::Colour(0xff16171A) : juce::Colour(0xffECE9E2);
+    auto labP = dark_ ? juce::Colour(0xff9A9892) : juce::Colour(0xff55544F);
+    auto mono = juce::Font(juce::FontOptions("DejaVu Sans Mono", 11.f, juce::Font::plain));
 
     switch (kind)
     {
         case Title:
+        {
+            // marca: círculo cortado (papel em cima, tinta em baixo)
+            float my = r.getCentreY();
+            g.setColour(ink);
+            g.drawEllipse(2.f, my - 9.f, 18.f, 18.f, 1.5f);
+            g.fillEllipse(2.f, my - 9.f, 18.f, 9.f);
             g.setColour(ink);
             g.setFont(juce::Font(juce::FontOptions(20.f, juce::Font::bold)));
-            g.drawText("deVerb", r, juce::Justification::centredLeft, false);
+            g.drawText("deVerb", juce::Rectangle<int>(28, 0, (int)r.getWidth() - 28, (int)r.getHeight()),
+                       juce::Justification::centredLeft, false);
             break;
+        }
         case EngineFwd:
+        {
             g.setColour(ink);
             g.setFont(juce::Font(juce::FontOptions(24.f, juce::Font::bold)));
-            g.drawText("FWD", 0, 0, 90, (int)r.getHeight(), juce::Justification::centredLeft, false);
+            g.drawText("FWD", 0, 0, 62, (int)r.getHeight(), juce::Justification::centredLeft, false);
+            juce::Path arr;
+            float ay = r.getCentreY();
+            arr.addTriangle(66.f, ay - 6.f, 66.f, ay + 6.f, 75.f, ay);
+            g.fillPath(arr);
             g.setFont(10.f);
             g.setColour(labP);
-            g.drawText("PRESENT", 95, 0, 120, (int)r.getHeight(), juce::Justification::centredLeft, false);
+            g.drawText("PRESENT", 82, 0, 120, (int)r.getHeight(), juce::Justification::centredLeft, false);
             break;
+        }
         case EngineRev:
+        {
             g.setColour(paper);
             g.setFont(juce::Font(juce::FontOptions(24.f, juce::Font::bold)));
-            g.drawText("REV", 0, 0, 70, (int)r.getHeight(), juce::Justification::centredLeft, false);
+            g.drawText("REV", 30, 0, 70, (int)r.getHeight(), juce::Justification::centredLeft, false);
+            juce::Path arr;
+            float ay = r.getCentreY();
+            arr.addTriangle(26.f, ay - 6.f, 26.f, ay + 6.f, 17.f, ay);
+            g.fillPath(arr);
             break;
+        }
         case Scope:
         {
             g.setColour(juce::Colour(0xffC7C2B6));
             g.drawRect(r, 1.f);
+            g.setColour(labP.withAlpha(0.5f));
+            g.drawLine(r.getX(), r.getCentreY(), r.getRight(), r.getCentreY(), 1.f);
             if (proc != nullptr)
             {
                 constexpr int N = 128;
@@ -50,6 +75,12 @@ void V4Viz::paint(juce::Graphics& g)
                     else p.lineTo(x, y);
                 }
                 g.strokePath(p, juce::PathStrokeType(1.5f));
+                g.drawLine(r.getRight() - 14.f, r.getY() + 3.f,
+                           r.getRight() - 14.f, r.getBottom() - 3.f, 1.5f);
+                g.setColour(labP);
+                g.setFont(10.f);
+                g.drawText("NOW", juce::Rectangle<int>((int)r.getRight() - 40, 0, 38, 12),
+                           juce::Justification::centredRight, false);
             }
             break;
         }
@@ -63,6 +94,19 @@ void V4Viz::paint(juce::Graphics& g)
             float winW = beats / 4.f * r.getWidth();
             g.setColour(juce::Colour(0xff3A3C42));
             g.fillRect(juce::Rectangle<float>(r.getRight()-winW, r.getY(), winW, r.getHeight()));
+            // grelha de beats + etiquetas
+            g.setColour(juce::Colour(0xff3A3C42));
+            const char* bl[4] = { "NOW", "-1", "-2", "-3" };
+            for (int k = 0; k < 4; ++k)
+            {
+                float x = r.getRight() - k * r.getWidth() / 4.f;
+                g.drawLine(x, r.getY(), x, r.getBottom(), 1.f);
+                g.setColour(labP);
+                g.setFont(10.f);
+                g.drawText(bl[k], juce::Rectangle<int>((int)x - 34, (int)r.getY(), 32, 12),
+                           juce::Justification::centredRight, false);
+                g.setColour(juce::Colour(0xff3A3C42));
+            }
             g.setColour(paper);
             float hx = r.getRight() - pos01 * winW;
             g.drawLine(hx, r.getY(), hx, r.getBottom(), 1.5f);
@@ -70,25 +114,70 @@ void V4Viz::paint(juce::Graphics& g)
         }
         case Ruler:
         {
+            // Ticks por passo + número de beat + passo ativo iluminado.
+            int n = auxA_ == 8 ? 8 : 16;
+            int active = auxB_;
             g.setColour(labP);
             g.setFont(10.f);
             for (int b = 0; b < 4; ++b)
                 g.drawText(juce::String(b+1), (int)(b * r.getWidth()/4), 0, (int)(r.getWidth()/4), 12,
                            juce::Justification::centred, false);
+            float w = r.getWidth() / 16.f;
+            for (int i = 0; i < 16; ++i)
+            {
+                float x = r.getX() + i * w + w * 0.5f;
+                bool dim = i >= n;
+                if (i == active && !dim)
+                {
+                    g.setColour(WaterLnF::accentFor(mod_));
+                    g.fillRect(juce::Rectangle<float>(x - 6.f, r.getBottom() - 4.f, 12.f, 3.f));
+                }
+                g.setColour(dim ? labP.withAlpha(0.3f) : labP);
+                g.drawLine(x, r.getBottom() - 8.f, x, r.getBottom() - 4.f, 1.f);
+            }
             break;
         }
         case GateBig:
         {
             g.setColour(ink);
-            g.setFont(juce::Font(juce::FontOptions(44.f, juce::Font::plain)));
+            g.setFont(juce::Font(juce::FontOptions("DejaVu Sans Mono", 44.f, juce::Font::plain)));
             g.drawText(text_.isNotEmpty() ? text_ : "07/16", r, juce::Justification::centredRight, false);
             break;
         }
-        case DelayMs: case VerbT60: case MorphRead: case BpmSrc: case GranLed:
-            g.setColour(kind == GranLed || kind == BpmSrc ? labP : ink);
-            g.setFont(11.f);
+        case MorphRead:
+        {
+            g.setColour(labP);
+            g.setFont(10.f);
+            g.drawFittedText("MORPH", juce::Rectangle<int>(0, 0, (int)r.getWidth(), 12),
+                             juce::Justification::centredLeft, 1);
+            g.setColour(ink);
+            g.setFont(juce::Font(juce::FontOptions("DejaVu Sans Mono", 14.f, juce::Font::plain)));
+            g.drawFittedText(text_, juce::Rectangle<int>(0, 12, (int)r.getWidth(), 22),
+                             juce::Justification::centredLeft, 1);
+            break;
+        }
+        case DelayMs: case VerbT60: case BpmSrc:
+            if (kind == BpmSrc)
+            {
+                g.setColour(labP);
+                g.fillEllipse(r.getX() + 8.f, r.getCentreY() - 4.f, 8.f, 8.f);
+            }
+            g.setColour(kind == BpmSrc ? labP : ink);
+            g.setFont(mono);
             g.drawFittedText(text_, getLocalBounds(), juce::Justification::centred, 1);
             break;
+        case GranLed:
+        {
+            // lâmpada + texto; quente = acento do módulo
+            float ly = r.getCentreY();
+            g.setColour(hot_ ? juce::Colour(0xffF0B323) : labP);
+            if (hot_) g.fillEllipse(r.getRight() - 70.f, ly - 4.f, 8.f, 8.f);
+            else g.drawEllipse(r.getRight() - 70.f, ly - 4.f, 8.f, 8.f, 1.5f);
+            g.setColour(hot_ ? ink : labP);
+            g.setFont(mono);
+            g.drawFittedText(text_, getLocalBounds(), juce::Justification::centred, 1);
+            break;
+        }
         case Taps:
         {
             float fb = 0.35f;
@@ -119,6 +208,12 @@ void V4Viz::paint(juce::Graphics& g)
                 p.lineTo(x, r.getCentreY()+a);
             }
             g.strokePath(p, juce::PathStrokeType(1.f));
+            float tx = r.getX() + r.getWidth() * 0.52f;
+            g.drawLine(tx, r.getY() + 2.f, tx, r.getBottom() - 2.f, 1.5f);
+            g.setColour(labP);
+            g.setFont(10.f);
+            g.drawText("T60", juce::Rectangle<int>((int)tx + 5, 0, 40, 12),
+                       juce::Justification::centredLeft, false);
             break;
         }
         case IR:
@@ -130,13 +225,16 @@ void V4Viz::paint(juce::Graphics& g)
         case Shards:
         {
             g.setColour(juce::Colour(0xffF0B323));
-            for (int i = 0; i < 8; ++i)
+            for (int i = 0; i < 15; ++i)
             {
-                float x = r.getX() + 8 + i * (r.getWidth()-16)/7;
+                float x = r.getX() + 8 + i * (r.getWidth()-16)/14;
                 float s = 6 + (i % 3) * 4;
+                bool up = (i % 2) == 0;
                 juce::Path t;
-                t.addTriangle(x-s/2, r.getCentreY()+s/2, x+s/2, r.getCentreY()+s/2, x, r.getCentreY()-s/2);
-                g.fillPath(t);
+                if (up) t.addTriangle(x-s/2, r.getCentreY()+s/2, x+s/2, r.getCentreY()+s/2, x, r.getCentreY()-s/2);
+                else t.addTriangle(x-s/2, r.getCentreY()-s/2, x+s/2, r.getCentreY()-s/2, x, r.getCentreY()+s/2);
+                if (i % 3 == 2) { g.setColour(ink); g.strokePath(t, juce::PathStrokeType(1.f)); g.setColour(juce::Colour(0xffF0B323)); }
+                else g.fillPath(t);
             }
             break;
         }

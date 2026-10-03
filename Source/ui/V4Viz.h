@@ -15,10 +15,18 @@ public:
 
     V4Viz(Kind k, DeVerbProcessor* proc = nullptr,
           const juce::String& mod = {}, const juce::String& txt = {});
-    void setText(const juce::String& t) { text_ = t; repaint(); }
+    void setText(const juce::String& t) { if (t != text_) { text_ = t; repaint(); } }
+    void setDark(bool d) { if (d != dark_) { dark_ = d; repaint(); } }
+    void setHot(bool h) { if (h != hot_) { hot_ = h; repaint(); } }
+    void setAux(int a, int b, int c)
+    {
+        if (a != auxA_ || b != auxB_ || c != auxC_) { auxA_ = a; auxB_ = b; auxC_ = c; repaint(); }
+    }
     void paint(juce::Graphics& g) override;
 
     Kind kind;
     DeVerbProcessor* proc = nullptr;
     juce::String mod_, text_;
+    bool dark_ = false, hot_ = false;
+    int auxA_ = 16, auxB_ = -1, auxC_ = 0;
 };

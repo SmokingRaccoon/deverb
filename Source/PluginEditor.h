@@ -155,6 +155,7 @@ private:
     juce::OwnedArray<juce::Component> owned_;
     juce::ComponentAnimator animator_;
     bool reduceMotion_ = false;
+    int lastOrder_ = -1;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DeVerbEditor)
 };

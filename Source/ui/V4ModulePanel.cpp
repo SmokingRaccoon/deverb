@@ -15,6 +15,21 @@ juce::Colour accFor(const juce::String& m)
     return WaterLnF::ink;
 }
 juce::StringArray notesArr() { return TempoInfo::noteNames(); }
+// Formato de leitura por base (igual a generate-v4.py: label, min, max, fmt).
+juce::String fmtFor(const juce::String& mod, const juce::String& base)
+{
+    if (base == "time" || base == "predelay") return "ms";
+    if (base == "xfade") return "ms1";
+    if (base == "damp" || base == "locut" || base == "hicut") return "hz";
+    if (base == "wow_rate") return "hz1";
+    if (base == "wow_depth") return "ms1";
+    if (base == "decay" && mod == "verb") return "s";
+    if (base == "env_thr") return "db";
+    if (base == "pitch") return "st";
+    if (base == "repeats") return "int";
+    juce::ignoreUnused(mod);
+    return "n2";
+}
 }
 
 V4ModulePanel::~V4ModulePanel()
@@ -42,6 +57,13 @@ V4ModulePanel::V4ModulePanel(DeVerbProcessor& proc, const juce::String& engine, 
             auto* b = new juce::TextButton(juce::String(i + 1));
             b->setBounds(gx, 46, 36, 56);
             b->setColour(juce::TextButton::buttonOnColourId, acc);
+            // on-text por módulo (VERB sobre índigo leva papel, não preto)
+            b->setColour(juce::TextButton::textColourOnId, WaterLnF::onFor(mod));
+            b->setColour(juce::TextButton::textColourOffId,
+                         engine == "rev" ? WaterLnF::paper : WaterLnF::ink);
+            if (engine == "rev")
+                b->getProperties().set("dark", true);
+            b->getProperties().set("stepnum", true);
             b->setClickingTogglesState(true);
             int idx = i;
             b->onClick = [this, idx] { flipStep(idx); };
@@ -58,7 +80,7 @@ V4ModulePanel::V4ModulePanel(DeVerbProcessor& proc, const juce::String& engine, 
         addStepper("pattern", patNames, "PATTERN", 372, 120, 256, patBits);
         addStepper("rate", notesArr(), "RATE", 640, 120, 256);
         addSeg("steps", { "8", "16" }, "STEPS", 372, 156, 152);
-        addSeg("trig", { "Host", "Midi", "Transient", "Free" }, "TRIG", 536, 156, 360);
+        addSeg("trig", { "Host", "Midi", "TRANS", "Free" }, "TRIG", 536, 156, 360);
     }
     else if (mod == "delay")
     {
@@ -122,17 +144,23 @@ V4Dial* V4ModulePanel::addDial(const juce::String& base, const juce::String& lab
     if (p != nullptr) defV = p->convertFrom0to1(p->getDefaultValue());
     auto* d = new V4Dial(label, "m", acc, defV);
     d->setBounds(x, y, 64, 86);
+    d->setDark(engine_ == "rev");
     addAndMakeVisible(d);
     owned_.add(d);
     DialEntry e;
     e.dial = d; e.paramId = id;
     if (auto* rp = dynamic_cast<juce::RangedAudioParameter*>(p))
     {
+        auto nr = rp->getNormalisableRange();
+        e.lo = nr.start; e.hi = nr.end;
+        // setupRange ANTES do attachment: o initial update escreve a caixa
+        // com a função de formato final (unidades incluídas).
+        d->setupRange(nr.start, nr.end, fmtFor(mod_, base));
         // SliderAttachment precisa de Slider; V4Dial é Slider
         e.att = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
             proc_.apvts, id, *d);
-        auto nr = rp->getNormalisableRange();
-        e.lo = nr.start; e.hi = nr.end;
+        d->fixDoubleClick(); // o attachment impõe dblclick normalizado; repõe o real
+        d->refreshTextIfNeeded();
     }
     dials_.push_back(std::move(e));
     return d;
@@ -177,6 +205,7 @@ V4Key* V4ModulePanel::addKey(const juce::String& base, const juce::String& text,
 {
     juce::String id = pid(base);
     auto* key = new V4Key(par(id), text, k, acc);
+    key->setDark(engine_ == "rev");
     key->setBounds(x, y, w, h);
     key->onTetherClick = [this](V4Key* kk) {
         if (onTetherClick) onTetherClick(mod_, kk);
@@ -190,6 +219,7 @@ V4Key* V4ModulePanel::addKey(const juce::String& base, const juce::String& text,
 void V4ModulePanel::addViz(V4Viz::Kind k, int x, int y, int w, int h, const juce::String& txt)
 {
     auto* v = new V4Viz(k, &proc_, mod_, txt);
+    v->setDark(engine_ == "rev");
     v->setBounds(x, y, w, h);
     addAndMakeVisible(v);
     owned_.add(v);
@@ -265,6 +295,7 @@ void V4ModulePanel::updateLinkState()
             float e01 = (eff - e.lo) / juce::jmax(1e-6f, e.hi - e.lo);
             e.dial->setNeedles(own01, g01, e01, true);
         }
+        e.dial->refreshTextIfNeeded();
         // MS só conta com DIV=Free (esbate)
         if (e.paramId == "fwd_delay_time" || e.paramId == "rev_delay_time")
         {
@@ -353,6 +384,61 @@ void V4ModulePanel::updateLinkState()
             }
         }
     }
+
+    // --- Readouts vivos + playhead (por engine, com link resolvido) ---
+    if (mod_ == "gate")
+    {
+        bool isRev = engine_ == "rev";
+        juce::String pidUse = (isRev && linked) ? "fwd_gate_pattern" : (isRev ? "rev_gate_pattern" : "fwd_gate_pattern");
+        juce::String sidUse = (isRev && linked) ? "fwd_gate_steps" : (isRev ? "rev_gate_steps" : "fwd_gate_steps");
+        int steps = getFloat(proc_.apvts, sidUse) > 0.5f ? 16 : 8;
+        int play = isRev ? proc_.getRevGateStep() : proc_.getGateStep();
+        if (auto* v = findViz(V4Viz::GateBig))
+            v->setText(juce::String::formatted("%02d", play + 1) + "/" + juce::String(steps));
+        if (auto* v = findViz(V4Viz::Ruler))
+            v->setAux(steps, play, 0);
+        for (auto& sb : stepBtns_)
+        {
+            if (sb.idx == play) sb.b->getProperties().set("play", true);
+            else sb.b->getProperties().remove("play");
+        }
+        juce::ignoreUnused(pidUse);
+    }
+    else if (mod_ == "delay")
+    {
+        bool isRev = engine_ == "rev";
+        juce::String nid = (isRev && linked) ? "fwd_delay_note" : (isRev ? "rev_delay_note" : "fwd_delay_note");
+        juce::String mid = (isRev && linked) ? "fwd_delay_time" : (isRev ? "rev_delay_time" : "fwd_delay_time");
+        int ni = (int)getFloat(proc_.apvts, nid);
+        float bpm = proc_.getUiBpm();
+        juce::String src = proc_.isTempoFromHost() ? "HOST" : "INT";
+        float ms = (ni == (int)TempoInfo::Note::Free)
+            ? getFloat(proc_.apvts, mid)
+            : (float)(TempoInfo::beatsToSeconds(
+                TempoInfo::noteToBeats((TempoInfo::Note)ni), (double)bpm) * 1000.0);
+        juce::String txt = juce::String((int)std::round(ms)) + " ms";
+        if (ni != (int)TempoInfo::Note::Free)
+            txt += " - " + TempoInfo::noteNames()[ni] + " @ " + src;
+        if (auto* v = findViz(V4Viz::DelayMs))
+            v->setText(txt);
+    }
+    else if (mod_ == "verb")
+    {
+        bool isRev = engine_ == "rev";
+        juce::String did = (isRev && linked) ? "fwd_verb_decay" : (isRev ? "rev_verb_decay" : "fwd_verb_decay");
+        float dec = getFloat(proc_.apvts, did, 2.5f);
+        if (auto* v = findViz(V4Viz::VerbT60))
+            v->setText("T60 " + V4Dial::formatValue("s", dec));
+    }
+    else if (mod_ == "gran")
+    {
+        bool active = proc_.isGranularActive();
+        if (auto* v = findViz(V4Viz::GranLed))
+        {
+            v->setText(active ? "GRAB!" : "IDLE");
+            v->setHot(active);
+        }
+    }
 }
 
 juce::Slider* V4ModulePanel::findDial(const juce::String& paramId)
@@ -373,5 +459,11 @@ V4Stepper* V4ModulePanel::findStepper(const juce::String& paramId)
 V4Key* V4ModulePanel::findKey(const juce::String& paramId)
 {
     for (auto& k : keys_) if (k.paramId == paramId) return k.key;
+    return nullptr;
+}
+
+V4Viz* V4ModulePanel::findViz(V4Viz::Kind k)
+{
+    for (auto* v : vizs_) if (v->kind == k) return v;
     return nullptr;
 }

@@ -41,10 +41,10 @@ public:
     void setDark(bool d) { dark_ = d; repaint(); }
     void setTethered(bool t, int fwdIdx = -1)
     {
+        if (t == tethered_ && fwdIdx == fwdIdx_) return;
         tethered_ = t;
         fwdIdx_ = fwdIdx;
         repaint();
-        resized();
     }
     bool isTethered() const { return tethered_; }
     int getIndex() const { return idx_; }
@@ -68,12 +68,16 @@ public:
     // Chamado pelo editor quando o tether é clicado: abre o toast UNLINK.
     std::function<void(V4Seg*)> onTetherClick;
 
+    int capWidth() const
+    {
+        if (cap_.isEmpty()) return 0;
+        return juce::jmax(40, (int)(cap_.length() * 7.75 + 19));
+    }
+
     void resized() override
     {
         auto r = getLocalBounds();
-        int capW = cap_.isNotEmpty() ? 52 : 0;
-        if (cap_.isNotEmpty())
-            capW = juce::jmax(40, (int)(cap_.length() * 7.75 + 19));
+        int capW = capWidth();
         int bx = capW;
         int bw = juce::jmax(1, (r.getWidth() - capW) / juce::jmax(1, btns.size()));
         for (auto* b : btns)
@@ -108,7 +112,7 @@ public:
         {
             g.setColour(lab);
             g.setFont(10.f);
-            g.drawFittedText(cap_, juce::Rectangle<int>(0, 0, 52, r.getHeight()).toNearestInt(),
+            g.drawFittedText(cap_, juce::Rectangle<int>(0, 0, capWidth(), r.getHeight()).toNearestInt(),
                              juce::Justification::centred, 1);
         }
         if (tethered_)

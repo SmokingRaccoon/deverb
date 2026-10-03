@@ -39,6 +39,11 @@ void WaterLnF::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int 
     float discD = (variant == "xl") ? 76.f : 48.f;
     float ringD = (variant == "xl") ? 88.f : 58.f;
 
+    bool dark = props.contains("dark") ? (bool) props["dark"] : false;
+    auto fg = dark ? paper : ink;   // disco / texto principal
+    auto bg = dark ? ink : paper;   // fundo atrás do dial
+    auto lab = dark ? labI : labP;  // etiquetas
+
     float cx = r.getCentreX();
     float cy = r.getY() + (isMer ? 14.f : 0.f) + ringD * 0.5f;
     float ghost01 = props.contains("ghost") ? (float)props["ghost"] : sliderPos;
@@ -49,23 +54,22 @@ void WaterLnF::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int 
         acc = juce::Colour((juce::uint32)(long long)props["accent"]);
 
     auto ang = [&](float v01) { return rotaryStartAngle + v01 * (rotaryEndAngle - rotaryStartAngle); };
-
-    // 21 ticks em 270° desde -135°
-    g.setColour(labP.withAlpha(0.55f));
+    // Ticks NO MESMO mapeamento da agulha (21 em 270°, gap em baixo).
+    auto tickPt = [&](float v01, float rad) {
+        float a = ang(v01) - juce::MathConstants<float>::halfPi;
+        return juce::Point<float>(cx + std::cos(a) * rad, cy + std::sin(a) * rad);
+    };
     for (int i = 0; i < 21; ++i)
     {
-        float a = -135.f + i * (270.f / 20.f);
-        float rad = juce::MathConstants<float>::pi * a / 180.f;
-        float r1 = ringD * 0.5f - 1.f, r0 = ringD * 0.5f - 5.f;
-        juce::Point<float> p0(cx + std::cos(rad) * r0, cy + std::sin(rad) * r0);
-        juce::Point<float> p1(cx + std::cos(rad) * r1, cy + std::sin(rad) * r1);
+        float v = (float) i / 20.f;
+        auto p0 = tickPt(v, ringD * 0.5f - 5.f);
+        auto p1 = tickPt(v, ringD * 0.5f - 1.f);
         // aceso até ao efetivo
-        float lit = eff01 * 20.f;
-        g.setColour(i <= lit ? ink : labP.withAlpha(0.45f));
+        g.setColour(i <= eff01 * 20.f ? fg : lab.withAlpha(0.45f));
         g.drawLine(juce::Line<float>(p0, p1), 1.8f);
     }
 
-    // disco
+    // disco (no REV inverte: papel sobre tinta, como no mockup)
     if (isMer)
     {
         // cortado pela linha de agua: metade tinta / metade papel
@@ -78,53 +82,62 @@ void WaterLnF::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int 
     }
     else
     {
-        g.setColour(ink);
+        g.setColour(fg);
         g.fillEllipse(cx - discD/2, cy - discD/2, discD, discD);
     }
 
-    auto needle = [&](float v01, juce::Colour c, float w, float lenFrac, bool hollow)
+    auto needleLine = [&](float v01, juce::Colour c, float w, bool hollow)
     {
         float a = ang(v01) - juce::MathConstants<float>::halfPi;
-        juce::Point<float> tip(cx + std::cos(a) * (discD*0.5f - 4.f) * lenFrac,
-                               cy + std::sin(a) * (discD*0.5f - 4.f) * lenFrac);
+        juce::Point<float> tip(cx + std::cos(a) * (discD*0.5f - 4.f),
+                               cy + std::sin(a) * (discD*0.5f - 4.f));
         g.setColour(c);
-        if (hollow)
-            g.drawLine(juce::Line<float>({cx, cy}, tip), w + 2.f);
-        else
-            g.drawLine(juce::Line<float>({cx, cy}, tip), w);
+        g.drawLine(juce::Line<float>({cx, cy}, tip), hollow ? w + 2.f : w);
     };
 
     if (linked)
-        needle(ghost01, paper.withAlpha(0.85f), 5.f, 1.f, true); // fantasma oca
+        needleLine(ghost01, bg, 5.f, true); // fantasma oca, cor do fundo
     if (isMer)
-        needle(sliderPos, juce::Colours::white, 3.f, 1.f, false);
+    {
+        // agulha em 2 passes com clip (difference do mockup): tinta em cima,
+        // papel em baixo — sempre legível nas duas metades.
+        g.saveState();
+        g.reduceClipRegion((int)cx - 60, (int)(cy - discD/2) - 4, 120, (int)(discD/2) + 4);
+        needleLine(sliderPos, ink, 3.f, false);
+        g.restoreState();
+        g.saveState();
+        g.reduceClipRegion((int)cx - 60, (int)cy, 120, (int)(discD/2) + 4);
+        needleLine(sliderPos, paper, 3.f, false);
+        g.restoreState();
+    }
     else
-        needle(sliderPos, paper, 2.f, 1.f, false);
+    {
+        needleLine(sliderPos, bg, 2.f, false);
+    }
 
-    // ponto = efetivo, na cor do modulo
+    // ponto = efetivo, na cor do modulo, com halo da cor do fundo
     {
         float a = ang(eff01) - juce::MathConstants<float>::halfPi;
         float rr = ringD * 0.5f + 3.f;
         juce::Point<float> p(cx + std::cos(a) * rr, cy + std::sin(a) * rr);
         g.setColour(acc);
         g.fillEllipse(p.x - 3.f, p.y - 3.f, 6.f, 6.f);
-        g.setColour(paper);
+        g.setColour(bg);
         g.drawEllipse(p.x - 3.f, p.y - 3.f, 6.f, 6.f, 1.5f);
     }
 
-    // label + valor (propriedades do dial)
+    // etiqueta colada ao knob (faixa própria, sem colidir com anel/caixa)
     juce::String lb = slider.getName();
-    g.setColour(isMer && false ? labP : labP);
+    g.setColour(lab);
     g.setFont(10.f);
     if (isMer)
     {
-        g.setColour(labP);
         g.drawFittedText(lb, juce::Rectangle<int>((int)r.getX(), (int)r.getY(), (int)r.getWidth(), 12),
                          juce::Justification::centred, 1);
     }
     else if (lb.isNotEmpty())
     {
-        g.drawFittedText(lb, juce::Rectangle<int>((int)r.getX(), (int)(cy + discD/2 + 2), (int)r.getWidth(), 12),
+        g.drawFittedText(lb, juce::Rectangle<int>((int)r.getX(), (int)(r.getY() + 60), (int)r.getWidth(), 12),
                          juce::Justification::centred, 1);
     }
 }

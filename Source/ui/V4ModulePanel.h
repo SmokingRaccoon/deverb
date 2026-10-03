@@ -32,6 +32,7 @@ public:
     V4Seg* findSeg(const juce::String& paramId);
     V4Stepper* findStepper(const juce::String& paramId);
     V4Key* findKey(const juce::String& paramId);
+    V4Viz* findViz(V4Viz::Kind k);
 
     std::function<void(const juce::String& mod, juce::Component* anchor)> onTetherClick;
 

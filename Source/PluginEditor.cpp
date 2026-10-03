@@ -90,23 +90,28 @@ DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
 
     fwdMixDial = new V4Dial("FWD MIX", "m", WaterLnF::ink, 1.0);
     fwdMixDial->setBounds(240, 176, 64, 86);
+    fwdMixDial->setupRange(0.0, 1.0, "n2");
     addAndMakeVisible(fwdMixDial); owned_.add(fwdMixDial);
     fwdMixAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         proc.apvts, "fwd_mix", *fwdMixDial);
+    fwdMixDial->fixDoubleClick();
 
     auto* er = new V4Viz(V4Viz::EngineRev, &proc);
     er->setBounds(24, 406, 112, 28);
     addAndMakeVisible(er); owned_.add(er); engineRevViz = er;
 
     revModeSeg = new V4Seg(ap->getParameter("rev_mode"), { "Off", "Loop", "Throw" }, {}, WaterLnF::ink);
+    revModeSeg->setDark(true);
     revModeSeg->setBounds(144, 406, 168, 28);
     addAndMakeVisible(revModeSeg); owned_.add(revModeSeg);
 
-    revSourceSeg = new V4Seg(ap->getParameter("rev_source"), { "Dry", "PostFWD" }, {}, WaterLnF::ink);
+    revSourceSeg = new V4Seg(ap->getParameter("rev_source"), { "DRY", "POST" }, {}, WaterLnF::ink);
+    revSourceSeg->setDark(true);
     revSourceSeg->setBounds(24, 440, 112, 28);
     addAndMakeVisible(revSourceSeg); owned_.add(revSourceSeg);
 
     revCaptureSeg = new V4Seg(ap->getParameter("rev_capture"), { "2", "3", "4" }, "BEATS", WaterLnF::ink);
+    revCaptureSeg->setDark(true);
     revCaptureSeg->setBounds(144, 440, 148, 28);
     addAndMakeVisible(revCaptureSeg); owned_.add(revCaptureSeg);
 
@@ -115,18 +120,22 @@ DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
     addAndMakeVisible(captureViz); owned_.add(captureViz);
 
     auto mkRev = [&](const char* id, const char* lb, int x, V4Dial*& out,
-                     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>& att)
+                     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>& att,
+                     double lo, double hi, const char* fmt)
     {
         out = new V4Dial(lb, "m", WaterLnF::ink, 0.0);
         out->setBounds(x, 518, 64, 86);
+        out->setDark(true);
+        out->setupRange(lo, hi, fmt);
         addAndMakeVisible(out); owned_.add(out);
         att = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
             proc.apvts, id, *out);
+        out->fixDoubleClick();
     };
-    mkRev("rev_rate", "RATE", 24, revRateDial, revRateAtt);
-    mkRev("rev_lfo", "LFO", 96, revLfoDial, revLfoAtt);
-    mkRev("rev_duck", "DUCK", 168, revDuckDial, revDuckAtt);
-    mkRev("rev_mix", "REV MIX", 240, revMixDial, revMixAtt);
+    mkRev("rev_rate", "RATE", 24, revRateDial, revRateAtt, 0.25, 2.0, "x");
+    mkRev("rev_lfo", "LFO", 96, revLfoDial, revLfoAtt, 0.0, 1.0, "n2");
+    mkRev("rev_duck", "DUCK", 168, revDuckDial, revDuckAtt, 0.0, 1.0, "n2");
+    mkRev("rev_mix", "REV MIX", 240, revMixDial, revMixAtt, 0.0, 1.0, "n2");
 
     // ---- Meridiano: pedras + PWR/LINK + MORPH/THROW/TRIM/X/ORDER/MASTER ----
     const struct { const char* mod; int x; juce::Colour acc; } tileDef[4] = {
@@ -157,6 +166,7 @@ DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
         kl->onTetherClick = [this](V4Key*) {};
         addAndMakeVisible(kl); owned_.add(kl); linkKeys[i] = kl;
         auto* kr = new V4Key(ap->getParameter(pwrRevIds[i]), "", V4Key::PwrRev, acc);
+        kr->setDark(true);
         kr->setBounds(tx + 8, 354, 40, 20);
         kr->onTetherClick = [this, i](V4Key* k) {
             juce::String m = modAt(i);
@@ -167,21 +177,26 @@ DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
 
     inputDial = new V4Dial("INPUT", "mer", WaterLnF::ink, 1.0);
     inputDial->setBounds(24, 291, 64, 88);
+    inputDial->setupRange(0.0, 2.0, "n2");
     addAndMakeVisible(inputDial); owned_.add(inputDial);
     inputAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         proc.apvts, "input_gain", *inputDial);
+    inputDial->fixDoubleClick();
 
     morphDial = new V4Dial("MORPH", "xl", WaterLnF::gateA, 0.0);
     morphDial->setBounds(644, 290, 88, 88);
+    morphDial->setupRange(0.0, 1.0, "pct");
     addAndMakeVisible(morphDial); owned_.add(morphDial);
     morphAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         proc.apvts, "morph", *morphDial);
+    morphDial->fixDoubleClick();
 
     morphReadViz = new V4Viz(V4Viz::MorphRead, &proc, {}, "35%");
     morphReadViz->setBounds(740, 296, 56, 34);
     addAndMakeVisible(morphReadViz); owned_.add(morphReadViz);
 
     linkMasterKey = new V4Key(ap->getParameter("link_master"), "ALL", V4Key::LinkAll, WaterLnF::ink);
+    linkMasterKey->setDark(true);
     linkMasterKey->setBounds(740, 342, 52, 20);
     addAndMakeVisible(linkMasterKey); owned_.add(linkMasterKey);
 
@@ -194,15 +209,19 @@ DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
 
     trimDelayDial = new V4Dial("T-DLY", "mer", WaterLnF::ink, 1.0);
     trimDelayDial->setBounds(904, 291, 64, 88);
+    trimDelayDial->setupRange(0.25, 4.0, "x");
     addAndMakeVisible(trimDelayDial); owned_.add(trimDelayDial);
     trimDelayAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         proc.apvts, "trim_delay", *trimDelayDial);
+    trimDelayDial->fixDoubleClick();
 
     trimDecayDial = new V4Dial("T-DEC", "mer", WaterLnF::ink, 1.0);
     trimDecayDial->setBounds(976, 291, 64, 88);
+    trimDecayDial->setupRange(0.25, 2.0, "x");
     addAndMakeVisible(trimDecayDial); owned_.add(trimDecayDial);
     trimDecayAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         proc.apvts, "trim_decay", *trimDecayDial);
+    trimDecayDial->fixDoubleClick();
 
     xmodeSeg = new V4Seg(ap->getParameter("x_mode"), { "Add", "XFade" }, {}, WaterLnF::ink);
     xmodeSeg->setBounds(1058, 296, 116, 28);
@@ -210,14 +229,17 @@ DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
 
     orderStepper = new V4Stepper(ap->getParameter("chain_order"),
                                  { "G-D-V-Gr", "G-V-D-Gr", "D-G-V-Gr", "V-D-G-Gr" }, {}, {});
+    orderStepper->setDark(true);
     orderStepper->setBounds(1058, 344, 116, 28);
     addAndMakeVisible(orderStepper); owned_.add(orderStepper);
 
     masterDial = new V4Dial("MASTER", "mer", WaterLnF::ink, 0.8);
     masterDial->setBounds(1192, 291, 64, 88);
+    masterDial->setupRange(0.0, 1.0, "n2");
     addAndMakeVisible(masterDial); owned_.add(masterDial);
     masterAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         proc.apvts, "master", *masterDial);
+    masterDial->fixDoubleClick();
 
     ripples = std::make_unique<Ripples>();
     ripples->setBounds(0, 282, 1280, 104);
@@ -327,12 +349,16 @@ void DeVerbEditor::hideToast() { if (toast) toast->setVisible(false); }
 
 void DeVerbEditor::applyOrder(int idx)
 {
-    // Ordem da cadeia = posições das pedras (animar com ComponentAnimator)
+    // Ordem da cadeia = posições das pedras (animar com ComponentAnimator).
+    // Só mexe quando o índice muda (o Timer corre a 30 Hz).
+    idx = juce::jlimit(0, 3, idx);
+    if (idx == lastOrder_)
+        return;
+    lastOrder_ = idx;
     static const char* orders[4][4] = {
         { "gate", "delay", "verb", "gran" }, { "gate", "verb", "delay", "gran" },
         { "delay", "gate", "verb", "gran" }, { "verb", "delay", "gate", "gran" },
     };
-    idx = juce::jlimit(0, 3, idx);
     int slotX[4] = { 106, 238, 370, 502 };
     for (int k = 0; k < 4; ++k)
     {
@@ -431,6 +457,12 @@ void DeVerbEditor::timerCallback()
         for (int m = 0; m < 4; ++m)
             panels[e][m]->updateLinkState();
 
+    // dials globais: efetivo = próprio + refresh da caixa
+    for (auto* d : { fwdMixDial, revRateDial, revLfoDial, revDuckDial, revMixDial,
+                     inputDial, morphDial, trimDelayDial, trimDecayDial, masterDial })
+        if (d != nullptr)
+            d->syncEffToOwn();
+
     // order -> pedras (lê choice 0..3)
     if (auto* v = proc.apvts.getRawParameterValue("chain_order"))
         applyOrder((int)v->load());
@@ -448,11 +480,8 @@ void DeVerbEditor::timerCallback()
     if (toast && toast->isVisible() && juce::Time::getMillisecondCounter() > toastHideAt)
         hideToast();
 
-    // LEDs / big numbers via painéis (GateBig/DelayMs/VerbT60/GranLed):
-    // atualiza textos percorrendo vizs — simplificado: repaint geral dos painéis visíveis
-    for (int e = 0; e < 2; ++e)
-        for (int m = 0; m < 4; ++m)
-            if (panels[e][m]->isVisible()) panels[e][m]->repaint();
+    // Sem repaint geral: cada viz/dial/seg repinta-se sozinho quando o valor
+    // muda (guards em setText/setAux/setNeedles/setTethered).
 }
 
 void DeVerbEditor::paint(juce::Graphics& g)
@@ -475,6 +504,14 @@ void DeVerbEditor::paint(juce::Graphics& g)
     // linha de agua
     g.setColour(WaterLnF::water);
     g.drawLine(0, 334, 1280, 334, 1.f);
+    // legendas fora das caixas (meridiano)
+    g.setFont(10.f);
+    g.setColour(WaterLnF::labP);
+    g.drawFittedText("X-MODE", juce::Rectangle<int>(1058, 282, 116, 14),
+                     juce::Justification::centredLeft, 1);
+    g.setColour(WaterLnF::labI);
+    g.drawFittedText("ORDER", juce::Rectangle<int>(1058, 372, 116, 14),
+                     juce::Justification::centredLeft, 1);
 }
 
 void DeVerbEditor::resized()

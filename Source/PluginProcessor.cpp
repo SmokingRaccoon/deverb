@@ -680,6 +680,7 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
                 runStage(revGran, [&]{ revGran.process(revView, tempo); });
                 break;
         }
+        revGateStepUi.store(revGate.getCurrentStep());
     }
 
     // --- Fase 6: mistura final. ADD: dry + FWD + REV. XFADE: beats pares

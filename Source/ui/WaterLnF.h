@@ -61,11 +61,21 @@ public:
 
     juce::Slider::SliderLayout getSliderLayout(juce::Slider& slider) override
     {
+        // Faixas sem sobreposição (célula 64×86: anel 0..58, etiqueta 60..72,
+        // caixa 72..86; mer 64×88: etiqueta 0..12, anel 14..72, caixa 74..88).
         auto b = slider.getLocalBounds();
         juce::Slider::SliderLayout l;
         l.sliderBounds = b.withTrimmedBottom(26);
-        l.textBoxBounds = b.withTrimmedTop(b.getHeight() - 20);
+        l.textBoxBounds = b.withTrimmedTop(b.getHeight() - 14).reduced(4, 0);
         return l;
+    }
+
+    // Valores tabulares mono (caixas dos dials); o resto fica em Nimbus Sans.
+    juce::Font getLabelFont(juce::Label& label) override
+    {
+        if (dynamic_cast<juce::Slider*>(label.getParentComponent()) != nullptr)
+            return juce::Font(juce::FontOptions("DejaVu Sans Mono", 11.f, juce::Font::plain));
+        return juce::Font(juce::FontOptions(11.f, juce::Font::plain));
     }
 
     void drawToggleButton(juce::Graphics& g, juce::ToggleButton& b,
@@ -73,60 +83,86 @@ public:
     {
         auto r = b.getLocalBounds().toFloat().reduced(1.f);
         bool on = b.getToggleState();
+        bool dark = b.getProperties().contains("dark");
+        auto fg = dark ? paper : ink;
+        auto lab = dark ? labI : labP;
         auto acc = b.findColour(juce::TextButton::buttonOnColourId);
+        auto onTx = b.findColour(juce::TextButton::textColourOnId);
         bool tether = b.getProperties().contains("tether");
+        auto playBar = [&] {
+            if (b.getProperties().contains("play"))
+                g.fillRect(juce::Rectangle<float>(r.getX(), r.getBottom() - 4.f,
+                                                  r.getWidth(), 3.f));
+        };
         if (on)
         {
             g.setColour(acc);
             g.fillRoundedRectangle(r, 3.f);
-            g.setColour(juce::Colours::black);
+            g.setColour(onTx);
+            playBar();
         }
         else
         {
             g.setColour(juce::Colour(0x00000000));
             g.fillRoundedRectangle(r, 3.f);
-            g.setColour(labP);
+            g.setColour(lab);
             g.drawRoundedRectangle(r, 3.f, 1.f);
-            g.setColour(ink);
+            g.setColour(fg);
+            playBar();
         }
         if (tether)
         {
             float dash[2] = { 4.f, 3.f };
+            g.setColour(lab);
             g.drawDashedLine(juce::Line<float>(r.getX(), r.getY(), r.getRight(), r.getY()), dash, 2);
         }
-        g.setFont(10.f);
+        g.setFont(juce::Font(juce::FontOptions("DejaVu Sans Mono", 10.f, juce::Font::plain)));
         g.drawFittedText(b.getButtonText(), r.toNearestInt(), juce::Justification::centred, 1);
     }
 
     void drawButtonBackground(juce::Graphics& g, juce::Button& b, const juce::Colour&,
                               bool, bool) override
     {
-        // Botões de segmentado: respeitam as cores próprias (polaridade p/n).
+        // Botões de segmentado: só o fundo (o texto vai no drawButtonText,
+        // senão saía duplicado). Setas dos steppers: nada (o pai desenha).
         if (b.getProperties().contains("segbtn"))
         {
-            bool on = b.getToggleState();
-            auto r = b.getLocalBounds().toFloat();
-            if (on)
+            if (b.getToggleState())
             {
                 g.setColour(b.findColour(juce::TextButton::buttonColourId));
-                g.fillRect(r);
+                g.fillRect(b.getLocalBounds().toFloat());
             }
-            g.setColour(on ? b.findColour(juce::TextButton::textColourOnId)
-                           : b.findColour(juce::TextButton::textColourOffId));
-            g.setFont(10.f);
-            g.drawFittedText(b.getButtonText(), b.getLocalBounds(),
-                             juce::Justification::centred, 1);
             return;
         }
-        juce::ToggleButton* tb = dynamic_cast<juce::ToggleButton*>(&b);
-        bool on = tb != nullptr && tb->getToggleState();
+        if (b.getProperties().contains("nobg"))
+            return;
+        // NOTA: getToggleState() direto no Button — os steps são TextButton
+        // com toggle (dynamic_cast para ToggleButton falhava sempre e o ON
+        // nunca pintava).
+        bool on = b.getToggleState();
         auto r = b.getLocalBounds().toFloat().reduced(1.f);
         auto acc = b.findColour(juce::TextButton::buttonOnColourId);
         g.setColour(on ? acc : juce::Colour(0x00000000));
         if (on) g.fillRoundedRectangle(r, 3.f);
-        else { g.setColour(labP); g.drawRoundedRectangle(r, 3.f, 1.f); }
-        g.setColour(on ? juce::Colours::black : ink);
-        g.setFont(10.f);
-        g.drawFittedText(b.getButtonText(), r.toNearestInt(), juce::Justification::centred, 1);
+        else
+        {
+            g.setColour(b.getProperties().contains("dark") ? labI : labP);
+            g.drawRoundedRectangle(r, 3.f, 1.f);
+        }
+        // (sem texto aqui: o drawButtonText trata disso, senão duplicava)
+    }
+
+    void drawButtonText(juce::Graphics& g, juce::TextButton& b,
+                        bool, bool) override
+    {
+        bool on = b.getToggleState();
+        g.setColour(on ? b.findColour(juce::TextButton::textColourOnId)
+                       : b.findColour(juce::TextButton::textColourOffId));
+        if (b.getProperties().contains("stepnum"))
+            g.setFont(juce::Font(juce::FontOptions("DejaVu Sans Mono", 10.f, juce::Font::plain)));
+        else
+            g.setFont(10.f);
+        g.drawFittedText(b.getButtonText(), b.getLocalBounds(),
+                         juce::Justification::centred, 1);
     }
 };
