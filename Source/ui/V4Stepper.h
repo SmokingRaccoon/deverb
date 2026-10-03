@@ -40,10 +40,10 @@ public:
         idx_ = juce::jlimit(0, options_.size() - 1, i);
         repaint();
     }
-    void setTethered(bool t, int fwdIdx = -1)
+    void setTethered(bool t, int fwdIdx = -1, bool fwdCustom = false)
     {
-        if (t == tethered_ && fwdIdx == fwdIdx_) return;
-        tethered_ = t; fwdIdx_ = fwdIdx; repaint();
+        if (t == tethered_ && fwdIdx == fwdIdx_ && fwdCustom == fwdCustom_) return;
+        tethered_ = t; fwdIdx_ = fwdIdx; fwdCustom_ = fwdCustom; repaint();
     }
     void setDark(bool d) { dark_ = d; repaint(); }
     int getIndex() const { return idx_; }
@@ -116,7 +116,7 @@ public:
         juce::String txt;
         if (!touched_ && param_ == nullptr && placeholder_.isNotEmpty())
             txt = placeholder_;
-        else if (custom_)
+        else if (custom_ || (tethered_ && fwdCustom_))
             txt = "Custom…";
         else
             txt = options_[juce::jlimit(0, options_.size()-1, shown)];
@@ -181,7 +181,7 @@ private:
     juce::TextButton prev_ { "" }, next_ { "" };
     std::unique_ptr<juce::ParameterAttachment> attach;
     bool dark_ = false;
-    bool custom_ = false, touched_ = false;
+    bool custom_ = false, touched_ = false, fwdCustom_ = false;
     juce::String placeholder_;
     int idx_ = 0;
     bool tethered_ = false;

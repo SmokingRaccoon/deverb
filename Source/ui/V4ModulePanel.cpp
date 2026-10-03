@@ -391,6 +391,7 @@ void V4ModulePanel::updateLinkState()
         for (auto& s : steps_)
         {
             int fwdI = 0;
+            bool fwdCustom = false;
             juce::String fwdId = s.paramId;
             fwdId = fwdId.replace("rev_gr_", "gr_");
             if (fwdId.startsWith("rev_")) fwdId = "fwd_" + fwdId.substring(4);
@@ -400,17 +401,18 @@ void V4ModulePanel::updateLinkState()
             {
                 // pattern int (bits) -> índice na lista de fábrica
                 int b = (int)proc_.apvts.getRawParameterValue(fwdId)->load();
-                fwdI = 0;
+                fwdI = -1;
                 int k = 0;
                 for (auto& fp : Gater::factoryPatterns)
                 {
                     if (fp.bits == b) { fwdI = k; break; }
                     ++k;
                 }
+                if (fwdI < 0) { fwdI = 0; fwdCustom = true; }
             }
             else if (proc_.apvts.getParameter(fwdId) != nullptr)
                 fwdI = (int)std::round(proc_.apvts.getRawParameterValue(fwdId)->load());
-            s.st->setTethered(linked, fwdI);
+            s.st->setTethered(linked, fwdI, fwdCustom);
         }
         for (auto& k : keys_)
         {
