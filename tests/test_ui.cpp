@@ -60,6 +60,10 @@ struct UiSessionDriver
     }
     void flipStepFwd(int i) { ed.panels[0][0]->flipStep(i); pump(); }
     void flipStepRev(int i) { ed.panels[1][0]->flipStep(i); pump(); }
+    void pressThrow()
+    {
+        if (auto* k = ed.findKey("rev_throw")) k->press();
+    }
     bool panelVisible(int e, int m) { return ed.panels[e][m]->isVisible(); }
 };
 
@@ -211,6 +215,15 @@ int main()
         if (auto* k = ed.findKey("rev_gate_on")) k->setState(false);
         d.pump();
         CHECK(d.stored("rev_gate_on") == 0.f, "PWR desliga REV");
+    }
+
+    // U8. THROW: press() segura o botão 60 ms (o flanco do DSP lê por bloco;
+    // o 1->0 imediato antigo morria antes do próximo bloco e nunca disparava)
+    {
+        d.pressThrow();
+        CHECK(d.stored("rev_throw") == 1.f, "THROW press segura a 1");
+        d.pump(150);
+        CHECK(d.stored("rev_throw") == 0.f, "THROW larga após o hold");
     }
 
     if (failures == 0) std::printf("\nALL UI SESSION TESTS PASSED\n");
