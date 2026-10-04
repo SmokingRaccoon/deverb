@@ -1,6 +1,13 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+// Cast defensivo choice->Note: a UI nunca sai de 0..11, mas um state
+// antigo/corrompido podia pôr lixo no enum (UB no switch do noteToBeats).
+static TempoInfo::Note clampedNote(int idx)
+{
+    return (TempoInfo::Note) juce::jlimit(0, 11, idx);
+}
+
 DeVerbProcessor::DeVerbProcessor()
     : AudioProcessor(BusesProperties()
           .withInput("Input", juce::AudioChannelSet::stereo(), true)
@@ -13,6 +20,7 @@ DeVerbProcessor::DeVerbProcessor()
         ui.setProperty("selMod", "gate", nullptr);
     if (! ui.hasProperty("syncMode"))
         ui.setProperty("syncMode", "host", nullptr);
+    syncPolicyUi.store(ui.getProperty("syncMode", "host").toString() == "man" ? 1 : 0);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout DeVerbProcessor::createParams()
@@ -367,17 +375,17 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     smoothMaster.setTargetValue(apvts.getRawParameterValue("master")->load());
 
     tempo.update(*this, (double) apvts.getRawParameterValue("tempo_bpm")->load(),
-                   getSyncMode() == "man" ? TempoInfo::SyncPolicy::Manual
-                                           : TempoInfo::SyncPolicy::Host);
+                   syncPolicyUi.load() == 1 ? TempoInfo::SyncPolicy::Manual
+                                            : TempoInfo::SyncPolicy::Host);
 
     // Resolver tempo do delay: nota musical (via BPM) ou ms livres.
-    auto noteIdx = (int) apvts.getRawParameterValue("fwd_delay_note")->load();
+    auto noteIdx = juce::jlimit(0, 11, (int) apvts.getRawParameterValue("fwd_delay_note")->load());
     float delayMs;
     if (noteIdx == (int) TempoInfo::Note::Free)
         delayMs = apvts.getRawParameterValue("fwd_delay_time")->load();
     else
         delayMs = (float) (TempoInfo::beatsToSeconds(
-            TempoInfo::noteToBeats((TempoInfo::Note) noteIdx), tempo.bpm) * 1000.0);
+            TempoInfo::noteToBeats(clampedNote(noteIdx)), tempo.bpm) * 1000.0);
 
     fwdDelay.setTimeMs(delayMs);
     fwdDelay.setFeedback(apvts.getRawParameterValue("fwd_delay_fb")->load());
@@ -419,6 +427,9 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             {
                 int bi = off + i;
                 float m = (dl[bi] + dr[bi]) * 0.5f;
+                // NaN entrava no Path do scope (jlimit deixa-o passar):
+                // mata-se aqui, uma vez, para todos os leitores.
+                if (! std::isfinite(m)) m = 0.f;
                 scopeBuf[(size_t)(start + i)] = juce::jlimit(-1.f, 1.f, m);
             }
         };
@@ -451,7 +462,7 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         fwdBuf.clear(ch, 0, n);
 
     // --- Fase 2: gater ANTES do delay (tails não são cortados). ---
-    fwdGate.setRate((TempoInfo::Note) (int) apvts.getRawParameterValue("fwd_gate_rate")->load());
+    fwdGate.setRate(clampedNote((int) apvts.getRawParameterValue("fwd_gate_rate")->load()));
     fwdGate.setSteps(Gater::stepsCountFromChoice(
         (int) apvts.getRawParameterValue("fwd_gate_steps")->load()));
     fwdGate.setPattern((int) apvts.getRawParameterValue("fwd_gate_pattern")->load());
@@ -485,9 +496,8 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             preSec = apvts.getRawParameterValue("fwd_verb_predelay")->load() * 0.001;
         else
             preSec = TempoInfo::beatsToSeconds(
-                TempoInfo::noteToBeats((TempoInfo::Note) preNote), tempo.bpm);
-        double sr = getSampleRate();
-        fwdVerb.setPredelaySamples((int) juce::jlimit(0.0, 6.0 * sr - 1.0, preSec * sr));
+                TempoInfo::noteToBeats(clampedNote(preNote)), tempo.bpm);
+        fwdVerb.setPredelaySamples((int) juce::jlimit(0.0, 6.0 * dspSr - 1.0, preSec * dspSr));
 
         fwdVerb.setFrozen(apvts.getRawParameterValue("fwd_verb_freeze")->load() > 0.5f);
         fwdVerb.setMix(apvts.getRawParameterValue("fwd_verb_mix")->load());
@@ -502,11 +512,11 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     fwdGran.setManual(apvts.getRawParameterValue("gr_manual")->load() > 0.5f);
     fwdGran.setChance(apvts.getRawParameterValue("gr_chance")->load());
     fwdGran.setEnvThrDb(apvts.getRawParameterValue("gr_env_thr")->load());
-    fwdGran.setLenNote((TempoInfo::Note) (int) apvts.getRawParameterValue("gr_len_note")->load());
+    fwdGran.setLenNote(clampedNote((int) apvts.getRawParameterValue("gr_len_note")->load()));
     fwdGran.setRepeats((int) apvts.getRawParameterValue("gr_repeats")->load());
     fwdGran.setDecay(apvts.getRawParameterValue("gr_decay")->load());
     fwdGran.setTimeMs(apvts.getRawParameterValue("gr_time")->load());
-    fwdGran.setTimeNote((TempoInfo::Note) (int) apvts.getRawParameterValue("gr_time_note")->load());
+    fwdGran.setTimeNote(clampedNote((int) apvts.getRawParameterValue("gr_time_note")->load()));
     fwdGran.setPitchSt(apvts.getRawParameterValue("gr_pitch")->load());
     fwdGran.setFlux(apvts.getRawParameterValue("gr_flux")->load());
     fwdGran.setXfadeMs(apvts.getRawParameterValue("gr_xfade")->load());
@@ -617,7 +627,7 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         }
 
         // Gate REV (mesma ordem da FWD).
-        revGate.setRate((N) RL::resolveDiscrete(lGate, (int) RV("fwd_gate_rate"), (int) RV("rev_gate_rate")));
+        revGate.setRate(clampedNote(RL::resolveDiscrete(lGate, (int) RV("fwd_gate_rate"), (int) RV("rev_gate_rate"))));
         revGate.setSteps(Gater::stepsCountFromChoice(
             RL::resolveDiscrete(lGate, (int) RV("fwd_gate_steps"), (int) RV("rev_gate_steps"))));
         revGate.setPattern(RL::resolveDiscrete(lGate, (int) RV("fwd_gate_pattern"), (int) RV("rev_gate_pattern")));
@@ -633,7 +643,7 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
         // Delay REV (tempo com trim só em link; MORPH como nos outros).
         {
-            int dNote = RL::resolveDiscrete(lDelay, (int) RV("fwd_delay_note"), (int) RV("rev_delay_note"));
+            int dNote = juce::jlimit(0, 11, RL::resolveDiscrete(lDelay, (int) RV("fwd_delay_note"), (int) RV("rev_delay_note")));
             float dMs;
             if (dNote == (int) N::Free)
                 dMs = RL::resolveContinuous(lDelay, morph, RV("fwd_delay_time") * trimDly,
@@ -666,14 +676,14 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             revVerb.setT60(juce::jlimit(0.05, 30.0, (double) dec));
             revVerb.setDamp01(RL::resolveContinuous(lVerb, morph, RV("fwd_verb_damp"), RV("rev_verb_damp"), 0.f, 1.f));
             revVerb.setWidth01(RL::resolveContinuous(lVerb, morph, RV("fwd_verb_width"), RV("rev_verb_width"), 0.f, 1.f));
-            int preNote = RL::resolveDiscrete(lVerb, (int) RV("fwd_verb_predelay_note"), (int) RV("rev_verb_predelay_note"));
+            int preNote = juce::jlimit(0, 11, RL::resolveDiscrete(lVerb, (int) RV("fwd_verb_predelay_note"), (int) RV("rev_verb_predelay_note")));
             double preSec;
             if (preNote == (int) N::Free)
                 preSec = RL::resolveContinuous(lVerb, morph, RV("fwd_verb_predelay"),
                                                RV("rev_verb_predelay"), 0.f, 250.f) * 0.001;
             else
                 preSec = TempoInfo::beatsToSeconds(TempoInfo::noteToBeats((N) preNote), tempo.bpm);
-            revVerb.setPredelaySamples((int) juce::jlimit(0.0, 6.0 * getSampleRate() - 1.0, preSec * getSampleRate()));
+            revVerb.setPredelaySamples((int) juce::jlimit(0.0, 6.0 * dspSr - 1.0, preSec * dspSr));
             revVerb.setFrozen(RL::resolveBool(lVerb, RB("fwd_verb_freeze"), RB("rev_verb_freeze")));
             revVerb.setMix(RL::resolveContinuous(lVerb, morph, RV("fwd_verb_mix"), RV("rev_verb_mix"), 0.f, 1.f));
             revVerb.setTone(RL::resolveContinuous(lVerb, morph, RV("fwd_verb_locut"), RV("rev_verb_locut"), 20.f, 500.f),
@@ -687,11 +697,11 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         revGran.setManual(RL::resolveBool(lGran, RB("gr_manual"), RB("rev_gr_manual")));
         revGran.setChance(RL::resolveContinuous(lGran, morph, RV("gr_chance"), RV("rev_gr_chance"), 0.f, 1.f));
         revGran.setEnvThrDb(RL::resolveContinuous(lGran, morph, RV("gr_env_thr"), RV("rev_gr_env_thr"), -60.f, 0.f));
-        revGran.setLenNote((N) RL::resolveDiscrete(lGran, (int) RV("gr_len_note"), (int) RV("rev_gr_len_note")));
+        revGran.setLenNote(clampedNote(RL::resolveDiscrete(lGran, (int) RV("gr_len_note"), (int) RV("rev_gr_len_note"))));
         revGran.setRepeats(RL::resolveDiscrete(lGran, (int) RV("gr_repeats"), (int) RV("rev_gr_repeats")));
         revGran.setDecay(RL::resolveContinuous(lGran, morph, RV("gr_decay"), RV("rev_gr_decay"), 0.5f, 0.99f));
         revGran.setTimeMs(RL::resolveContinuous(lGran, morph, RV("gr_time"), RV("rev_gr_time"), 60.f, 8000.f));
-        revGran.setTimeNote((N) RL::resolveDiscrete(lGran, (int) RV("gr_time_note"), (int) RV("rev_gr_time_note")));
+        revGran.setTimeNote(clampedNote(RL::resolveDiscrete(lGran, (int) RV("gr_time_note"), (int) RV("rev_gr_time_note"))));
         revGran.setPitchSt(RL::resolveContinuous(lGran, morph, RV("gr_pitch"), RV("rev_gr_pitch"), -12.f, 12.f));
         revGran.setFlux(RL::resolveContinuous(lGran, morph, RV("gr_flux"), RV("rev_gr_flux"), 0.f, 1.f));
         revGran.setXfadeMs(RL::resolveContinuous(lGran, morph, RV("gr_xfade"), RV("rev_gr_xfade"), 1.f, 50.f));
@@ -791,6 +801,10 @@ void DeVerbProcessor::getScopeSnapshot(float* dst, int n)
     int avail = scopeFifo.getNumReady();
     int s1 = 0, sz1 = 0, s2 = 0, sz2 = 0;
     scopeFifo.prepareToRead(avail, s1, sz1, s2, sz2);
+    // Defesa contra reset() concorrente no overflow (não é thread-safe):
+    // índices fora da FIFO liam lixo fora do scopeBuf.
+    s1 = juce::jlimit(0, scopeCap - 1, s1); sz1 = juce::jlimit(0, scopeCap, sz1);
+    s2 = juce::jlimit(0, scopeCap - 1, s2); sz2 = juce::jlimit(0, scopeCap, sz2);
     int total = sz1 + sz2;
     int skip = juce::jmax(0, total - n);
     int got = 0;
@@ -801,7 +815,8 @@ void DeVerbProcessor::getScopeSnapshot(float* dst, int n)
         for (int i = 0; i < len && got < n; ++i)
         {
             if (skip > 0) { --skip; continue; }
-            dst[got++] = scopeBuf[(size_t)(start + i)];
+            int bi = start + i; // clamp duplo: reset() concorrente no overflow
+            dst[got++] = (bi >= 0 && bi < scopeCap) ? scopeBuf[(size_t) bi] : 0.f;
         }
     };
     copy(s1, sz1);
@@ -835,7 +850,9 @@ juce::String DeVerbProcessor::getSyncMode() const
 void DeVerbProcessor::setSyncMode(const juce::String& m)
 {
     auto ui = apvts.state.getOrCreateChildWithName("v4ui", nullptr);
-    ui.setProperty("syncMode", m == "man" ? "man" : "host", nullptr);
+    bool man = (m == "man");
+    ui.setProperty("syncMode", man ? "man" : "host", nullptr);
+    syncPolicyUi.store(man ? 1 : 0);
 }
 
 juce::AudioProcessorEditor* DeVerbProcessor::createEditor()

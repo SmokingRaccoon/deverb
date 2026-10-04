@@ -752,6 +752,15 @@ ficheiro.
 - **Bypass por módulo (v0.3)**: 8 switches `*_on` com helper `EnableRamp`
   (rampa 5 ms no wet, skip sem CPU, clear único sem tails); REV segue FWD
   via links; botões PWR nos headers ligados ao alvo FWD|REV.
+- **Shimmer renascia após 2 s**: o loop FDN+anel tinha ganho > 1 no grave
+  (modo ≈150 Hz a +11 dB/s); o teste antigo media o artefacto e passava.
+  HP de 50 Hz no caminho da oitava estabiliza tudo (matriz SR×T60×size);
+  testes 10b/10d medem bloom/decaimento/oitava real.
+- **Botão THROW morto**: `V4Key` fazia 1→0 no mesmo gesto e o DSP nunca via
+  o flanco (lê o botão por bloco). Hold de 60 ms via `callAfterDelay`.
+- **Duck em escada**: o envelope lia sempre a última amostra gravada
+  (constante no bloco); bursts curtos nem duckavam. Cursor por amostra
+  sobre `[w-n, w)`; teste 21 trava regressão.
 
 ## 18. Glossário rápido
 

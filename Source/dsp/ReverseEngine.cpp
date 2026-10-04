@@ -95,13 +95,18 @@ void ReverseEngine::renderBlock(juce::AudioBuffer<float>& out, const TempoInfo& 
     const double atkA = 1.0 - std::exp(-1.0 / (0.005 * sampleRate));
     const double relA = 1.0 - std::exp(-1.0 / (0.250 * sampleRate));
 
+    // O recordBlock deste bloco já correu: as amostras do bloco vivem em
+    // [w-n, w). Antes lia-se sempre w-1 (escada por bloco: o ataque de 5 ms
+    // quantizava ao tamanho do bloco e bursts curtos nem duckavam).
+    int blkStart = w - n;
     for (int i = 0; i < n; ++i)
     {
-        // Envelope a partir da amostra mais recente gravada.
-        int latest = w - 1;
-        if (latest < 0) latest += cap;
-        float dryMono = (std::abs(ringL[(size_t) latest])
-                       + std::abs(ringR[(size_t) latest])) * 0.5f;
+        // Envelope a partir do dry da própria amostra (cursor do bloco).
+        int idx = blkStart + i;
+        while (idx < 0) idx += cap;
+        while (idx >= cap) idx -= cap;
+        float dryMono = (std::abs(ringL[(size_t) idx])
+                       + std::abs(ringR[(size_t) idx])) * 0.5f;
         double a = (dryMono > duckEnv) ? atkA : relA;
         duckEnv += a * (dryMono - duckEnv);
         double over = juce::jlimit(0.0, 1.0, (duckEnv - thrLin) / (1.0 - thrLin));

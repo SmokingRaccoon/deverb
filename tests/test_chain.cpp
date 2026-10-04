@@ -37,6 +37,7 @@ static int mainOrder();
 static int mainFuzz();
 static int mainCivil();
 static int mainPower();
+static int mainIds();
 int main()
 {
     const double sr = 48000.0;
@@ -213,14 +214,47 @@ int main()
         CHECK(maxStep < 0.4f, "troca de algo sem clique (maxStep %f)", maxStep);
     }
 
-    failures += mainOrder();
-    failures += mainFuzz();
-    failures += mainCivil();
-    failures += mainPower();
+    mainOrder(); // o global `failures` já acumula; somar duplicava a conta
+    mainFuzz();
+    mainCivil();
+    mainPower();
+    mainIds();
 
     if (failures == 0) std::printf("\nALL CHAIN TESTS PASSED\n");
     else std::printf("\n%d FAILURES\n", failures);
     return failures == 0 ? 0 : 1;
+}
+
+// --- IDs: presets/RANDOM só usam IDs reais + contagem congelada (122) ---
+static int mainIds()
+{
+    DeVerbProcessor p;
+    int missing = 0;
+    for (auto& pre : deVerbFactoryPresets())
+        for (auto& [id, real] : pre.values)
+        {
+            (void) real;
+            if (p.apvts.getParameter(id) == nullptr)
+            {
+                std::printf("  preset '%s' usa ID inexistente: %s\n",
+                            pre.name, id.c_str());
+                ++missing;
+            }
+        }
+    juce::Random rng(1234);
+    for (auto& [id, real] : civilizedRandom(rng))
+    {
+        (void) real;
+        if (p.apvts.getParameter(id) == nullptr)
+        {
+            std::printf("  RANDOM usa ID inexistente: %s\n", id.c_str());
+            ++missing;
+        }
+    }
+    CHECK(missing == 0, "todos os IDs de presets/RANDOM existem (%d em falta)", missing);
+    int nParams = p.getParameters().size();
+    CHECK(nParams == 122, "122 IDs congelados (got %d)", nParams);
+    return failures;
 }
 
 // --- Fase 8: bypass por módulo no processador ---

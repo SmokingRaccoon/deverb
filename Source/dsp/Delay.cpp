@@ -91,11 +91,6 @@ void Delay::process(juce::AudioBuffer<float>& buffer)
     // Reverse quase-muted; o próximo já segue o novo algoritmo.)
     if (algo == Algo::Reverse)
     {
-        float mix = smoothMix.getNextValue();
-        // (rampa por bloco chega: o mix mexe-se devagar; resto é direto)
-        for (int i = 1; i < n; ++i) smoothMix.getNextValue();
-        float dry = 1.f - mix;
-
         double beats = juce::jlimit(0.25, 4.0,
             smoothDelay.getNextValue() / (float) sampleRate * bpm / 60.0);
         for (int i = 1; i < n; ++i) smoothDelay.getNextValue();
@@ -107,8 +102,9 @@ void Delay::process(juce::AudioBuffer<float>& buffer)
 
         float frz = smoothFreeze.getNextValue();
         for (int i = 1; i < n; ++i) smoothFreeze.getNextValue();
+        // 1 passo para decidir o swap; o loop de saída avança o resto
+        // por amostra (n+1 passos/bloco — irrelevante na rampa de 40 ms).
         float fadeR = smoothFade.getNextValue();
-        for (int i = 1; i < n; ++i) smoothFade.getNextValue();
         if (pendingSwap && fadeR <= 0.002f)
         {
             algo = pendingAlgo;
@@ -132,8 +128,13 @@ void Delay::process(juce::AudioBuffer<float>& buffer)
         const float* vp1 = nCh > 1 ? view.getWritePointer(1) : nullptr;
         for (int i = 0; i < n; ++i)
         {
+            // Mix + fade por amostra (como no caminho normal): automação
+            // rápida do mix não faz zipper em blocos grandes.
+            const float mix = smoothMix.getNextValue();
+            const float dry = 1.f - mix;
+            const float fade = smoothFade.getNextValue();
             const float e = pw.next(); // 1× por amostra
-            const float wetG = mix * e * fadeR;
+            const float wetG = mix * e * fade;
             const float dryG = dry + (1.f - dry) * (1.f - e); // e=0 → dry total
             bp0[i] = bp0[i] * dryG + vp0[i] * wetG;
             if (bp1 != nullptr)

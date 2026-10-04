@@ -124,7 +124,7 @@ civilizedRandom(juce::Random& rng, float wildness = 0.f)
 
     using P = std::pair<std::string, float>;
     std::vector<P> out;
-    out.reserve(115);
+    out.reserve(128); // contagem real ≈120 (era 115: realocava 1×)
 
     // Gain staging: sempre audível (mixes e PWRs forçados: com tudo a 0 ou
     // desligado o RANDOM anterior podia sair mudo se o utilizador tivesse

@@ -64,11 +64,16 @@ public:
         }
         if (kind_ == Throw)
         {
-            // momentâneo: pulso 1 depois 0 (para o flanco do DSP)
+            // momentâneo com HOLD de 60 ms: o 1→0 imediato morria antes do
+            // próximo bloco de áudio e o flanco do DSP nunca via o botão.
             if (param_ != nullptr && attach)
             {
                 attach->setValueAsCompleteGesture(1.f);
-                attach->setValueAsCompleteGesture(0.f);
+                juce::Component::SafePointer<V4Key> safe(this);
+                juce::Timer::callAfterDelay(60, [safe] {
+                    if (safe != nullptr && safe->attach)
+                        safe->attach->setValueAsCompleteGesture(0.f);
+                });
             }
             if (onClickExtra) onClickExtra(this);
             repaint();

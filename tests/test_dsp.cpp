@@ -724,6 +724,38 @@ int mainReverse()
         CHECK(RL::resolveBool(false, true, false) == false, "bool sem link");
     }
 
+    // --- 21. Duck segue o dry dentro do bloco (não em escada) ---
+    // Bloco transitório: 412 a 1.0 + 100 a 0.0. O envelope antigo lia
+    // sempre a última amostra (silêncio) e não duckava nada; o novo segue
+    // o cursor e o ganho cai durante a parte alta.
+    {
+        auto renderDuck = [&](float duckDepth)
+        {
+            ReverseEngine e;
+            e.prepare(sr);
+            e.setMode(ReverseEngine::Mode::Loop);
+            e.setRate(1.f);
+            e.setLfoDepth(0.f);
+            e.setCaptureBeats(2.0);
+            e.setDuckDepth(duckDepth);
+            recordOnly(e, 48000, [](int) { return 1.0f; });
+            juce::AudioBuffer<float> blk(2, 512);
+            blk.clear();
+            for (int i = 0; i < 412; ++i) { blk.setSample(0, i, 1.f); blk.setSample(1, i, 1.f); }
+            e.recordBlock(blk);
+            juce::AudioBuffer<float> o(2, 512);
+            o.clear();
+            e.renderBlock(o, t, 120.0, false);
+            double m = 0.0;
+            for (int i = 100; i < 400; ++i) m += std::abs(o.getSample(0, i));
+            return m / 300.0;
+        };
+        double dry = renderDuck(0.f);
+        double ducked = renderDuck(1.f);
+        CHECK(dry > 0.5, "referência sem duck passa (média %f)", dry);
+        CHECK(ducked < dry * 0.9, "duck acompanha o burst (%.3f < %.3f)", ducked, dry);
+    }
+
     return failures;
 }
 

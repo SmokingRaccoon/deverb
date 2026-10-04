@@ -9,9 +9,8 @@
 #include "dsp/ReverseEngine.h"
 #include "core/RevLinker.h"
 
-// Fase 0: esqueleto de efeito. processBlock é passthrough bit-transparente.
-// Os 5 parâmetros dummy existem para validar APVTS + state + automação
-// antes de haver DSP real. IDs congelados a partir do v1 — não renomear.
+// deVerb: processador dual-engine FWD+REV (gate/delay/verb/gran por motor).
+// 122 IDs de parâmetro congelados — não renomear (parte presets/automação).
 class DeVerbProcessor : public juce::AudioProcessor
 {
 public:
@@ -59,8 +58,11 @@ public:
     juce::String getSelMod() const;
     void setSelMod(const juce::String& m);
     // Política de sync (v4ui, fora dos params): "host" (default) ou "man".
+    // O int atómico espelha a string (0=host,1=man) para o audio thread ler
+    // sem alocar uma juce::String por bloco.
     juce::String getSyncMode() const;
     void setSyncMode(const juce::String& m);
+    std::atomic<int> syncPolicyUi { 0 };
 
 private:
     TempoInfo tempo;   // relógio central (lido por todos os módulos)
