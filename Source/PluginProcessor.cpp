@@ -336,6 +336,8 @@ void DeVerbProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     xfFwd.setCurrentAndTargetValue(1.f);
     xfRev.setCurrentAndTargetValue(1.f);
     smoothRevMix.setCurrentAndTargetValue(apvts.getRawParameterValue("rev_mix")->load());
+    smoothFwdMix.reset(sampleRate, 0.03);
+    smoothFwdMix.setCurrentAndTargetValue(apvts.getRawParameterValue("fwd_mix")->load());
     limPeak = 0.f;
     dspSr = sampleRate;
     limRelCoef = std::exp(-1.f / (0.05f * (float) sampleRate));
@@ -380,8 +382,7 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     fwdDelay.setTimeMs(delayMs);
     fwdDelay.setFeedback(apvts.getRawParameterValue("fwd_delay_fb")->load());
     fwdDelay.setDampingHz(apvts.getRawParameterValue("fwd_delay_damp")->load());
-    fwdDelay.setMix(apvts.getRawParameterValue("fwd_delay_mix")->load() *
-                    apvts.getRawParameterValue("fwd_mix")->load());
+    fwdDelay.setMix(apvts.getRawParameterValue("fwd_delay_mix")->load());
     fwdDelay.setFrozen(apvts.getRawParameterValue("fwd_delay_freeze")->load() > 0.5f);
     fwdDelay.setAlgo((Delay::Algo) (int) apvts.getRawParameterValue("fwd_delay_algo")->load());
     fwdDelay.setDrive(apvts.getRawParameterValue("fwd_delay_drive")->load());
@@ -427,10 +428,11 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     }
 
     // --- Fase 5 (captura Dry): lê-se aqui porque o buffer muda a seguir.
-    // Off = custo zero (nem grava); Dry grava pós-gain, PostFWD grava depois.
+    // Grava SEMPRE (mesmo em Off): ao religar, o anel tem passado recente
+    // em vez de áudio podre de há minutos. Custo: 2 escritas por amostra.
     const int revMode = (int) apvts.getRawParameterValue("rev_mode")->load();
     const int revSource = (int) apvts.getRawParameterValue("rev_source")->load();
-    if (revMode != 0 && revSource == 0)
+    if (revSource == 0)
         revEngine.recordBlock(buffer);
 
     // --- Fase 6: a cadeia FWD corre num scratch (ordem configurável). ---
@@ -444,6 +446,9 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         fwdBuf.setSize(2, n, false, false, true);
     for (int ch = 0; ch < nCh; ++ch)
         fwdBuf.copyFrom(ch, 0, buffer, ch, 0, n);
+    // Em mono, o 2º canal do scratch apodrecia e entrava no anel REV (R).
+    for (int ch = nCh; ch < 2; ++ch)
+        fwdBuf.clear(ch, 0, n);
 
     // --- Fase 2: gater ANTES do delay (tails não são cortados). ---
     fwdGate.setRate((TempoInfo::Note) (int) apvts.getRawParameterValue("fwd_gate_rate")->load());
@@ -485,8 +490,7 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         fwdVerb.setPredelaySamples((int) juce::jlimit(0.0, 6.0 * sr - 1.0, preSec * sr));
 
         fwdVerb.setFrozen(apvts.getRawParameterValue("fwd_verb_freeze")->load() > 0.5f);
-        fwdVerb.setMix(apvts.getRawParameterValue("fwd_verb_mix")->load() *
-                       apvts.getRawParameterValue("fwd_mix")->load());
+        fwdVerb.setMix(apvts.getRawParameterValue("fwd_verb_mix")->load());
         fwdVerb.setTone(apvts.getRawParameterValue("fwd_verb_locut")->load(),
                         apvts.getRawParameterValue("fwd_verb_hicut")->load());
         // (process() no runner)
@@ -558,7 +562,7 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     // --- Fase 5: motor REV paralelo (cadeia gémea sobre sinal reverso). ---
     if (revMode == 0)
         revReadPosUi.store(0.f); // sem leitor, sem cabeça fantasma na UI
-    if (revSource == 1 && revMode != 0)
+    if (revSource == 1)
         revEngine.recordBlock(fwdBuf); // captura PostFWD (= saída da cadeia)
 
     if (revMode != 0)
@@ -627,17 +631,16 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         revGate.scanMidi(midi);
         // (process() no switch em baixo, mesma ordem da FWD)
 
-        // Delay REV (tempo com trim só em link).
+        // Delay REV (tempo com trim só em link; MORPH como nos outros).
         {
             int dNote = RL::resolveDiscrete(lDelay, (int) RV("fwd_delay_note"), (int) RV("rev_delay_note"));
             float dMs;
             if (dNote == (int) N::Free)
-                dMs = lDelay ? RV("fwd_delay_time") : RV("rev_delay_time");
+                dMs = RL::resolveContinuous(lDelay, morph, RV("fwd_delay_time") * trimDly,
+                                            RV("rev_delay_time"), 1.f, 2200.f);
             else
                 dMs = (float) (TempoInfo::beatsToSeconds(
                     TempoInfo::noteToBeats((N) dNote), tempo.bpm) * 1000.0);
-            if (lDelay)
-                dMs *= trimDly;
             revDelay.setTimeMs(juce::jlimit(1.f, 2200.f, dMs));
             revDelay.setFeedback(RL::resolveContinuous(lDelay, morph, RV("fwd_delay_fb"), RV("rev_delay_fb"), 0.f, 0.95f));
             revDelay.setDampingHz(RL::resolveContinuous(lDelay, morph, RV("fwd_delay_damp"), RV("rev_delay_damp"), 200.f, 18000.f));
@@ -658,14 +661,16 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             float size01 = RL::resolveContinuous(lVerb, morph, RV("fwd_verb_size"), RV("rev_verb_size"), 0.f, 1.f);
             revVerb.setAlgo((reverb::Reverb::Algo) algo);
             revVerb.setSize01(size01);
-            float dec = lVerb ? RV("fwd_verb_decay") * trimDec : RV("rev_verb_decay");
+            float dec = RL::resolveContinuous(lVerb, morph, RV("fwd_verb_decay") * trimDec,
+                                              RV("rev_verb_decay"), 0.05f, 30.f);
             revVerb.setT60(juce::jlimit(0.05, 30.0, (double) dec));
             revVerb.setDamp01(RL::resolveContinuous(lVerb, morph, RV("fwd_verb_damp"), RV("rev_verb_damp"), 0.f, 1.f));
             revVerb.setWidth01(RL::resolveContinuous(lVerb, morph, RV("fwd_verb_width"), RV("rev_verb_width"), 0.f, 1.f));
             int preNote = RL::resolveDiscrete(lVerb, (int) RV("fwd_verb_predelay_note"), (int) RV("rev_verb_predelay_note"));
             double preSec;
             if (preNote == (int) N::Free)
-                preSec = (lVerb ? RV("fwd_verb_predelay") : RV("rev_verb_predelay")) * 0.001;
+                preSec = RL::resolveContinuous(lVerb, morph, RV("fwd_verb_predelay"),
+                                               RV("rev_verb_predelay"), 0.f, 250.f) * 0.001;
             else
                 preSec = TempoInfo::beatsToSeconds(TempoInfo::noteToBeats((N) preNote), tempo.bpm);
             revVerb.setPredelaySamples((int) juce::jlimit(0.0, 6.0 * getSampleRate() - 1.0, preSec * getSampleRate()));
@@ -745,6 +750,7 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     xfFwd.setTargetValue(! xfade || even ? 1.f : 0.f);
     xfRev.setTargetValue(! xfade || ! even ? 1.f : 0.f);
     smoothRevMix.setTargetValue(apvts.getRawParameterValue("rev_mix")->load());
+    smoothFwdMix.setTargetValue(apvts.getRawParameterValue("fwd_mix")->load());
 
     // Limiter de segurança: peak follower (attack instantâneo, release 50 ms),
     // ganho comum aos 2 canais. Só atua acima de -1 dBFS.
@@ -761,7 +767,7 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     for (int i = 0; i < n; ++i)
     {
         const float gM = smoothMaster.getNextValue();
-        const float gF = xfFwd.getNextValue();
+        const float gF = xfFwd.getNextValue() * smoothFwdMix.getNextValue();
         const float gR = xfRev.getNextValue() * smoothRevMix.getNextValue();
         float mixed[2] = { 0.f, 0.f };
         for (int ch = 0; ch < nCh; ++ch)

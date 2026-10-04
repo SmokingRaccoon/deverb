@@ -78,6 +78,9 @@ private:
     juce::AudioBuffer<float> fwdBuf; // scratch: cadeia FWD (p/ XFADE/order)
     // XFADE: ganhos suavizados por engine + fase de beats interna.
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> xfFwd, xfRev, smoothRevMix;
+    // FWD MIX é nível da cadeia (simétrico ao REV MIX): aplica-se no final,
+    // não dentro de dois módulos (gate/gran nunca o viam).
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothFwdMix;
     double procBeats = 0.0; // relógio livre (standalone / fallback)
     // Limiter de segurança no master (ceiling -1 dBFS, attack instantâneo).
     // Usa dspSr guardada no prepare (getSampleRate() sem host não é fiável).

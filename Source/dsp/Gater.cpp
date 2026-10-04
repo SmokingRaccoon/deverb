@@ -79,14 +79,16 @@ void Gater::process(juce::AudioBuffer<float>& buffer, const TempoInfo& tempo)
         }
 
         // Detetor de transientes (só no modo Transient): reset na subida.
+        // Max stereo: transiente só no R também dispara.
         if (trigMode == TrigMode::Transient && !useHost)
         {
-            float mono = buffer.getSample(0, i);
-            double a = (std::abs(mono) > envState) ? 0.01 : 0.0005;
-            envState += a * (std::abs(mono) - envState);
+            float mono = juce::jmax(std::abs(buffer.getSample(0, i)),
+                                    nCh > 1 ? std::abs(buffer.getSample(1, i)) : 0.f);
+            double a = (mono > envState) ? 0.01 : 0.0005;
+            envState += a * (mono - envState);
             if (cooldownLeft > 0)
                 --cooldownLeft;
-            else if (envState > (double) envThr * 1.5 && std::abs(mono) > envThr)
+            else if (envState > (double) envThr * 1.5 && mono > envThr)
             {
                 // Confirma ataque real (não cauda): amostra bem acima do estado.
                 internalBeats = 0.0;

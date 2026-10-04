@@ -282,6 +282,9 @@ void ShimmerVoice::prepare(double sampleRate, float sizeScale)
     ring.assign((size_t) ringCap, 0.f);
     this->cap = ringCap;
     w = 0;
+    // HP 50 Hz: o loop FDN+anel tem ganho > 1 no grave (modo ≈125 Hz
+    // medido a crescer +11 dB/s após 2 s); sem isto a cauda "renasce".
+    shimHpA = 1.f - onePoleA(50.f, sampleRate);
     reset();
 }
 
@@ -291,6 +294,7 @@ void ShimmerVoice::reset()
     std::fill(ring.begin(), ring.end(), 0.f);
     w = 0;
     shimState = 0.f;
+    shimHpX = shimHpY = 0.f;
     rPos = 0.f;
 }
 
@@ -331,7 +335,12 @@ void ShimmerVoice::processSample(float inL, float inR, float& outL, float& outR)
     float wB = std::cos(t * juce::MathConstants<float>::halfPi);
     float bPos = rPos - (float) cap * 0.5f;
     float shim = readAt(rPos) * wA + readAt(bPos) * wB;
-    shimState += shimA * (shim - shimState);
+    // HP 1-pólo no caminho da oitava: mata a recirculação sub-grave
+    // (ganho de loop > 1) sem tocar nas oitavas musicais.
+    float shimHp = shimHpA * (shimHpY + shim - shimHpX);
+    shimHpX = shim;
+    shimHpY = shimHp;
+    shimState += shimA * (shimHp - shimState);
 
     fdn.processSample(inL + shimState * shimmerAmt, inR + shimState * shimmerAmt, outL, outR);
     ring[(size_t) w] = (outL + outR) * 0.5f;
@@ -407,6 +416,7 @@ void Reverb::doSetLengths(float s)
     freeverb.setLengths(sc);
     fdn.setLengths(sc);
     plate.setLengths(sc);
+    shimmer.setLengths(sc);
 }
 
 void Reverb::setSize01(float s)
@@ -424,7 +434,9 @@ void Reverb::setSize01(float s)
                                         : (appliedBucket - bucket);
     if (step > 2)
     {
-        // Salto grande: fade-out, aplica no silêncio, fade-in.
+        // Salto grande: fade-out, aplica no silêncio, fade-in. O bucket só
+        // atualiza ao APLICAR (senão um gesto rápido invertia a ordem e um
+        // valor diferido sobrescrevia o novo a meio do fade).
         pendingSize = s;
         pendingSizeChange = true;
         pendingStructural = true;
@@ -434,8 +446,8 @@ void Reverb::setSize01(float s)
     {
         // Passo pequeno: aplica direto (vira chorus subtil, mascarado).
         doSetLengths(s);
+        appliedBucket = bucket;
     }
-    appliedBucket = bucket;
 }
 
 void Reverb::setT60(double t)
@@ -542,6 +554,7 @@ void Reverb::process(juce::AudioBuffer<float>& buffer)
             {
                 doSetLengths(pendingSize);
                 pendingSizeChange = false;
+                appliedBucket = (int) (juce::jlimit(0.f, 1.f, pendingSize) * 20.f + 0.5f);
             }
             pendingStructural = false;
             pendingReset = false;
@@ -552,11 +565,13 @@ void Reverb::process(juce::AudioBuffer<float>& buffer)
         float inR = (nCh > 1) ? buffer.getSample(1, i) : inL;
         dcLpL += dcA * (inL - dcLpL);
         dcLpR += dcA * (inR - dcLpR);
-        const float xL = inL, xR = inR; // BISECT: estados atualizam, não usados
+        const float xL = inL - dcLpL, xR = inR - dcLpR;
 
         // Pre-delay com leitura interpolada (sem cliques ao mudar).
-        preL[(size_t) preW] = xL;
-        preR[(size_t) preW] = xR;
+        // Em freeze lava-se a linha com silêncio: senão no unfreeze
+        // disparavam segundos de áudio da era congelada.
+        preL[(size_t) preW] = frz < 0.5f ? xL : 0.f;
+        preR[(size_t) preW] = frz < 0.5f ? xR : 0.f;
         float rp = (float) preW - preD;
         while (rp < 0.f) rp += (float) preCap;
         int i0 = (int) rp;

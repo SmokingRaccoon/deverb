@@ -26,6 +26,7 @@ public:
     }
     void reset() { std::fill(buf.begin(), buf.end(), 0.f); fstate = 0.f; }
     void setLength(int len)   { length = juce::jlimit(1, cap, len); }
+    int getLength() const     { return length; }
     void setFeedback(float g) { fbT = g; }   // alvo; o process chega lá (~30 ms)
     void setDamp(float d)     { dampT = juce::jlimit(0.f, 0.95f, d); } // 0 = brilhante
     void snap()               { fb = fbT; damp = dampT; } // pós-prepare/testes
@@ -181,6 +182,7 @@ class ShimmerVoice
 public:
     void prepare(double sr, float sizeScale);
     void reset();
+    void setLengths(float sizeScale) { fdn.setLengths(sizeScale); }
     void setT60(double t60);
     void setDampFc(float hz);
     void setFrozen(bool f);
@@ -193,6 +195,7 @@ private:
     double sr = 48000.0;
     float shimmerAmt = 0.35f;
     float shimState = 0.f, shimA = 0.3f, rPos = 0.f;
+    float shimHpX = 0.f, shimHpY = 0.f, shimHpA = 1.f; // HP no loop da oitava
     static constexpr int lapFade = 256; // crossfade anti-lap da leitura 2×
     float readAt(float pos) const;
 };

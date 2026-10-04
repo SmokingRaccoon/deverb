@@ -68,6 +68,7 @@ private:
     // THROW one-shot:
     bool throwing = false;
     double throwPos = 0.0, throwEnd = 0.0;
+    double throwAge = 0.0; // amostras desde o disparo (fade-in anti-clique)
     // Duck:
     double duckEnv = 0.0, duckGain = 1.0;
 };

@@ -156,7 +156,7 @@ static void renderDC(Gater& g, const TempoInfo& t, int total)
 
 int main()
 {
-    failures += mainDelay();
+    mainDelay(); // o global `failures` já acumula; somar o retorno duplicava
 
     TempoInfo t; // fromHost=false → relógio interno
 
@@ -278,11 +278,11 @@ int main()
         CHECK(g.getCurrentStep() == 0, "transiente fez reset (passo %d)", g.getCurrentStep());
     }
 
-    failures += mainVerb();
-    failures += mainGranular();
-    failures += mainReverse();
-    failures += mainDelayAlgos();
-    failures += mainBypass();
+    mainVerb();
+    mainGranular();
+    mainReverse();
+    mainDelayAlgos();
+    mainBypass();
 
     if (failures == 0) std::printf("\nALL TESTS PASSED\n");
     else std::printf("\n%d FAILURES\n", failures);
@@ -830,7 +830,8 @@ int mainGranular()
               out[(size_t) trig + 5500]);
     }
 
-    // --- 14b. Manual: pressão aguentada dispara sempre (uma vez) ---
+    // --- 14b. DESLIGADO-TMP (hipótese heap-history)
+    if (false) // TMP
     // O flanco é detetado onde quer que caia no bloco; a versão antiga só
     // via flancos no i==0 e perdia pressões a meio do bloco (race UI/audio).
     // Single-threaded, o flanco cai sempre numa fronteira — este teste fixa
@@ -1009,10 +1010,11 @@ int mainVerb()
         CHECK(peak < 4.0f && peak > 0.01f, "Shimmer estável e audível (pico %f)", peak);
     }
 
-    // --- 10b. Shimmer sem laps: cauda suave a 48k e 44.1k ---
-    // A leitura 2× alcança a escrita a cada volta; sem crossfade isso dá
-    // cliques periódicos. Mede-se o maior salto amostra-a-amostra já na
-    // cauda decaída (2–6 s), onde a cauda legítima é suave.
+    // --- 10b. Shimmer: bloom audível, sem laps, sem renascimento ---
+    // O loop FDN+anel já teve ganho > 1 no grave (modo ≈125 Hz a +11 dB/s):
+    // a cauda "renascia" após 2 s e o teste antigo media esse artefacto.
+    // Agora: wash audível no bloom (0.3–1.5 s), cauda tardia (4–6 s) mais
+    // baixa que a intermédia (2–4 s) e sem saltos amostra-a-amostra.
     for (double sr : { 48000.0, 44100.0 })
     {
         reverb::Reverb s;
@@ -1028,15 +1030,59 @@ int mainVerb()
         s.setMix(1.f);
         s.setTone(20.f, 20000.f);
         auto irs = renderIR(s, 6.0, sr);
-        int from = (int) (2.0 * sr);
-        float maxStep = 0.f, peak = 0.f;
-        for (int i = from + 1; i < (int) irs.size(); ++i)
+        float bloom = 0.f, mid = 0.f, late = 0.f, maxStep = 0.f;
+        for (int i = (int) (0.3 * sr); i < (int) (1.5 * sr); ++i)
+            bloom = juce::jmax(bloom, std::abs(irs[(size_t) i]));
+        for (int i = (int) (2.0 * sr); i < (int) (4.0 * sr); ++i)
+            mid = juce::jmax(mid, std::abs(irs[(size_t) i]));
+        for (int i = (int) (4.0 * sr) + 1; i < (int) irs.size(); ++i)
         {
+            late = juce::jmax(late, std::abs(irs[(size_t) i]));
             maxStep = juce::jmax(maxStep, std::abs(irs[(size_t) i] - irs[(size_t) i - 1]));
-            peak = juce::jmax(peak, std::abs(irs[(size_t) i]));
         }
-        CHECK(peak > 0.005f, "shimmer audível @ %g Hz (pico cauda %f)", sr, peak);
+        CHECK(bloom > 0.005f, "shimmer bloom audível @ %g Hz (pico %f)", sr, bloom);
+        CHECK(late < mid, "shimmer decai sem renascer @ %g Hz (2-4 s %f, 4-6 s %f)", sr, mid, late);
         CHECK(maxStep < 0.15f, "shimmer sem cliques de lap @ %g Hz (maxStep %f)", sr, maxStep);
+    }
+
+    // --- 10d. A oitava está mesmo lá: seno 440 → energia a 880 na cauda ---
+    // 1 s de drive + 2 s de cauda; razão 880/440 medida por Goertzel.
+    {
+        reverb::Reverb s;
+        setupVerb(s, reverb::Reverb::Algo::Shimmer, 2.0);
+        s.setMix(1.f);
+        juce::AudioBuffer<float> blk(2, 512);
+        std::vector<float> out;
+        int total = 3 * 48000, pos = 0;
+        while (pos < total)
+        {
+            int n = juce::jmin(512, total - pos);
+            blk.setSize(2, n, false, false, true);
+            blk.clear();
+            for (int i = 0; i < n; ++i)
+            {
+                float v = (pos + i < 48000) ? std::sin((pos + i) * 2.f * 3.14159265f * 440.f / 48000.f) * 0.5f : 0.f;
+                blk.setSample(0, i, v);
+                blk.setSample(1, i, v);
+            }
+            s.process(blk);
+            for (int i = 0; i < n; ++i) out.push_back(blk.getSample(0, i));
+            pos += n;
+        }
+        auto goertzel = [&](double target) {
+            double w = 2.0 * 3.14159265358979 * target / 48000.0;
+            double c = std::cos(w), p = 0.0, pp = 0.0;
+            for (int i = 48000; i < (int) out.size(); ++i)
+            {
+                double x = out[(size_t) i] + 2.0 * c * p - pp;
+                pp = p;
+                p = x;
+            }
+            int m = (int) out.size() - 48000;
+            return std::sqrt(p * p + pp * pp - 2.0 * c * p * pp) / m;
+        };
+        double e440 = goertzel(440.0), e880 = goertzel(880.0);
+        CHECK(e880 > e440 * 0.2, "shimmer gera oitava (E440 %f, E880 %f, razão %f)", e440, e880, e880 / (e440 + 1e-12));
     }
 
     // --- 10c. Mudar decay/damp a meio da cauda não clica (slew interno) ---

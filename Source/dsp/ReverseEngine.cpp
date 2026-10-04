@@ -71,6 +71,8 @@ void ReverseEngine::renderBlock(juce::AudioBuffer<float>& out, const TempoInfo& 
     if (nCh <= 0 || n <= 0)
         return;
 
+    if (! (bpm > 0.0))
+        bpm = 120.0; // defesa: bpm inválido partia captureLen em inf/NaN
     double captureLen = juce::jlimit(64.0, (double) cap - 64.0,
                                      TempoInfo::beatsToSamples(captureBeats, bpm, sampleRate));
     int xf = juce::jmax(32, (int) (0.008 * sampleRate)); // 8 ms de costura
@@ -83,6 +85,7 @@ void ReverseEngine::renderBlock(juce::AudioBuffer<float>& out, const TempoInfo& 
     if (mode == Mode::Throw && (btnEdge || midiThrow) && !throwing)
     {
         throwing = true;
+        throwAge = 0.0;
         throwPos = (double) w - 1.0;   // começa no passado mais recente...
         throwEnd = (double) w - captureLen; // ...e anda para trás até aqui
     }
@@ -125,7 +128,9 @@ void ReverseEngine::renderBlock(juce::AudioBuffer<float>& out, const TempoInfo& 
             if (dist < (double) xf && dist >= 0.0)
             {
                 t = (float) (dist / (double) xf);
-                alt = playPos + captureLen; // volta anterior (contínua no anel)
+                // -1: no limite (dist=0) alt == w-1 == destino do reanchor.
+                // Sem isto lia o slot por escrever (stale) e havia degrau.
+                alt = playPos + captureLen - 1.0; // volta anterior (contínua)
             }
             if (dist < 0.0) // apanhado pela janela deslizante: reancora
             {
@@ -145,6 +150,11 @@ void ReverseEngine::renderBlock(juce::AudioBuffer<float>& out, const TempoInfo& 
         {
             oL = readInterp(0, (float) throwPos);
             oR = readInterp(nCh > 1 ? 1 : 0, (float) throwPos);
+            // Fade-in de ~2 ms (a voz arranca do silêncio a amplitude cheia).
+            float attack = juce::jmin(1.f, (float) (throwAge / (0.002 * sampleRate)));
+            throwAge += 1.0;
+            oL *= attack;
+            oR *= attack;
             // Fade-out nos últimos xf amostras da cauda (sem clique ao calar).
             double remain = throwPos - throwEnd;
             if (remain < (double) xf && remain >= 0.0)
@@ -154,8 +164,15 @@ void ReverseEngine::renderBlock(juce::AudioBuffer<float>& out, const TempoInfo& 
                 oR *= g * g;
             }
             throwPos -= (double) smoothRate.getNextValue();
+            (void) smoothLfo.getNextValue(); // não emperra com automação em espera
             if (throwPos <= throwEnd)
                 throwing = false;
+        }
+        else if (mode == Mode::Throw && ! throwing)
+        {
+            // Idle: avança os smoothers para a automação não enfileirar.
+            (void) smoothRate.getNextValue();
+            (void) smoothLfo.getNextValue();
         }
 
         float dg = (float) duckGain;

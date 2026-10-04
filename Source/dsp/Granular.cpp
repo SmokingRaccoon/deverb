@@ -7,6 +7,8 @@ void Granular::prepare(double sr)
     cap = (int) (ringSec * sr) + 64;
     ringL.assign((size_t) cap, 0.f);
     ringR.assign((size_t) cap, 0.f);
+    loopL.assign((size_t) cap, 0.f);
+    loopR.assign((size_t) cap, 0.f);
     rng.setSeed(0x12345); // determinístico: dois MPs iguais soam igual; testes repetíveis
     reset();
 }
@@ -44,7 +46,10 @@ void Granular::setMode(Mode m)
         if (playing && releaseLeft <= 0)
         {
             // Troca com release em vez de corte seco (sem clique na cauda).
-            int xf = juce::jmax(64, (int) (xfadeMs * 0.001 * sampleRate));
+            // Taxa snapshotada como no fim natural (xfade a meio dessincronizava).
+            int xf = juce::jmax(16, (int) juce::jmin((double) (xfadeMs * 0.001 * sampleRate),
+                                                     loopLen > 0.0 ? loopLen / 4.0 : 4096.0));
+            relStep = 1.f / (float) (xf * 2);
             releaseLeft = xf * 2;
         }
         else
@@ -66,6 +71,23 @@ float Granular::readRing(int ch, float pos) const
     if (i1 >= cap) i1 -= cap;
     const auto& ring = (ch == 0) ? ringL : ringR;
     return ring[(size_t) i0] * (1.f - fr) + ring[(size_t) i1] * fr;
+}
+
+float Granular::readLoop(int ch, float pos) const
+{
+    // loopStart é sempre >= 0 (foto copiada para [0, len)); o wrap trata-se
+    // fora, por isso aqui basta o clamp defensivo.
+    int len = (int) loopL.size();
+    if (len <= 0)
+        return 0.f;
+    while (pos < 0.f) pos += (float) len;
+    while (pos >= (float) len) pos -= (float) len;
+    int i0 = (int) pos;
+    float fr = pos - (float) i0;
+    int i1 = i0 + 1;
+    if (i1 >= len) i1 -= len;
+    const auto& lp = (ch == 0) ? loopL : loopR;
+    return lp[(size_t) i0] * (1.f - fr) + lp[(size_t) i1] * fr;
 }
 
 void Granular::startGrab(double lenBeats, double bpm)
@@ -153,10 +175,15 @@ void Granular::process(juce::AudioBuffer<float>& buffer, const TempoInfo& tempo)
         float inL = buffer.getSample(0, i);
         float inR = (nCh > 1) ? buffer.getSample(1, i) : inL;
 
-        // Grava sempre (mesmo a tocar: permite retrigger sobre o novo áudio).
-        ringL[(size_t) w] = inL;
-        ringR[(size_t) w] = inR;
-        if (++w >= cap) w = 0;
+        // Pausa a gravação a tocar: senão o loop (e o pré-loop do xfade da
+        // costura) era rescrito a meio e os repeats tocavam áudio novo.
+        // O retrigger só dispara parado, por isso nada se perde.
+        if (! playing)
+        {
+            ringL[(size_t) w] = inL;
+            ringR[(size_t) w] = inR;
+            if (++w >= cap) w = 0;
+        }
 
         // --- Triggers (só com modo ativo e sem reprodução em curso) ---
         if (mode != Mode::Off && !playing)
@@ -173,13 +200,14 @@ void Granular::process(juce::AudioBuffer<float>& buffer, const TempoInfo& tempo)
                     fire = rng.nextFloat() < chance;
                 }
             }
-            else // Envelope
+            else // Envelope (max stereo: transiente só no R também dispara)
             {
-                double a = (std::abs(inL) > envState) ? 0.01 : 0.0005;
-                envState += a * (std::abs(inL) - envState);
+                float mono = juce::jmax(std::abs(inL), std::abs(inR));
+                double a = (mono > envState) ? 0.01 : 0.0005;
+                envState += a * (mono - envState);
                 if (cooldownLeft > 0)
                     --cooldownLeft;
-                else if (envState > (double) envThr * 1.5 && std::abs(inL) > envThr)
+                else if (envState > (double) envThr * 1.5 && mono > envThr)
                 {
                     fire = true;
                     cooldownLeft = cooldownMax;
@@ -198,11 +226,14 @@ void Granular::process(juce::AudioBuffer<float>& buffer, const TempoInfo& tempo)
             // Fim: BeatRepeat pelo nº de loops, outros por duração.
             bool finished = (activeLeft <= 0);
             if (finished && releaseLeft <= 0)
+            {
                 releaseLeft = xf * 2; // fade de saída
+                relStep = 1.f / (float) (xf * 2);
+            }
             if (releaseLeft > 0)
             {
                 --releaseLeft;
-                outFade = juce::jmax(0.f, outFade - 1.f / (float) (xf * 2));
+                outFade = juce::jmax(0.f, outFade - relStep);
                 if (releaseLeft == 0) { playing = false; }
             }
             else
@@ -281,8 +312,9 @@ void Granular::process(juce::AudioBuffer<float>& buffer, const TempoInfo& tempo)
         }
 
         // Interrupt com rampa (sem cliques ao entrar/sair).
-        // Modo Off = bypass transparente (ignora o mix).
-        float wantCut = (interrupt && playing) ? 0.f : 1.f;
+        // Modo Off = bypass transparente (ignora o mix). Com mix a 0 o
+        // interrupt não tem wet para trocar: não corta o dry (senão mutava).
+        float wantCut = (interrupt && playing && mix > 0.001f) ? 0.f : 1.f;
         float cutA = 1.f - std::exp(-1.0 / (0.005 * sampleRate));
         dryCut += (wantCut - dryCut) * cutA;
 

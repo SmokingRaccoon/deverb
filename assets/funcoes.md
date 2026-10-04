@@ -106,6 +106,11 @@ Põe o som dentro de uma sala — do quarto pequeno à catedral. 4 algoritmos.
 | Freeze | `verb_freeze` | toggle | OFF | Congela a cauda (drone infinito da sala). |
 | PWR | `verb_on` | toggle | ON | Liga/desliga o módulo. |
 
+> **Shimmer estável:** o loop FDN+anel oitavado tinha ganho > 1 no grave
+> (modo ≈125 Hz a +11 dB/s — a cauda "renascia" após 2 s). Um HP de 50 Hz
+> no caminho da oitava estabiliza em toda a matriz SR×T60×size sem tocar
+> nas oitavas musicais (testes 10b/10d: bloom + oitava 880/440 + decaimento).
+
 **Reservado:** o espaço vazio na coluna (painel "CONVOLUTION – FASE 8") vai
 receber reverb por convolução com respostas impulsivas reais (fase futura).
 
