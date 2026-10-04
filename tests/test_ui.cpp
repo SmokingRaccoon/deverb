@@ -58,6 +58,35 @@ struct UiSessionDriver
         ed.randomize();
         pump();
     }
+    void pressRandom()
+    {
+        // Via tecla Action (caminho real do utilizador, não randomize() direto).
+        // randomKey é privado mas o driver é friend: acesso direto.
+        if (ed.randomKey != nullptr) ed.randomKey->press();
+        pump();
+    }
+    float bpmAlpha() { return ed.bpmNum != nullptr ? ed.bpmNum->getAlpha() : -1.f; }
+    void clickSyncSeg(int i) // 0=HOST, 1=MANUAL, via clique real no segmento
+    {
+        if (ed.syncSeg == nullptr) return;
+        juce::TextButton* pick = nullptr;
+        for (int c = 0; c < ed.syncSeg->getNumChildComponents(); ++c)
+            if (auto* b = dynamic_cast<juce::TextButton*>(ed.syncSeg->getChildComponent(c)))
+                if (pick == nullptr || (i == 0) == (b->getX() < pick->getX())) pick = b;
+        if (pick != nullptr) pick->triggerClick();
+        pump();
+    }
+    void runAudio(int blocks = 4)
+    {
+        juce::MidiBuffer midi;
+        juce::AudioBuffer<float> buf(2, 512);
+        for (int b = 0; b < blocks; ++b)
+        {
+            buf.clear();
+            proc.processBlock(buf, midi);
+        }
+        pump(60);
+    }
     void flipStepFwd(int i) { ed.panels[0][0]->flipStep(i); pump(); }
     void flipStepRev(int i) { ed.panels[1][0]->flipStep(i); pump(); }
     void pressThrow()
@@ -217,11 +246,11 @@ int main()
         proc.setSyncMode("host");
     }
 
-    // U6. RANDOM
+    // U6. RANDOM via tecla Action (caminho do utilizador)
     {
         std::vector<float> before;
         for (auto* p : proc.getParameters()) before.push_back(p->getValue());
-        d.clickRandom();
+        d.pressRandom();
         int changed = 0;
         for (size_t i = 0; i < before.size(); ++i)
             if (std::abs(proc.getParameters()[(int)i]->getValue() - before[i]) > 0.001f) ++changed;
@@ -247,6 +276,39 @@ int main()
         CHECK(d.stored("rev_throw") == 1.f, "THROW press segura a 1");
         d.pump(150);
         CHECK(d.stored("rev_throw") == 0.f, "THROW larga após o hold");
+    }
+
+    // C2. Sync: HOST com dados esbate o BPM; MANUAL (clicado) usa o knob.
+    {
+        struct FakePh : juce::AudioPlayHead
+        {
+            juce::Optional<juce::AudioPlayHead::PositionInfo> getPosition() const override
+            {
+                juce::AudioPlayHead::PositionInfo p;
+                p.setBpm(128.0);
+                p.setIsPlaying(true);
+                p.setPpqPosition(4.0);
+                return p;
+            }
+        } ph;
+        CHECK(std::abs(d.bpmAlpha() - 1.f) < 0.01f, "BPM aceso sem host");
+        proc.setPlayHead(&ph);
+        d.runAudio();
+        CHECK(proc.isTempoFromHost(), "host fornece tempo");
+        CHECK(std::abs(proc.getUiBpm() - 128.f) < 0.5f, "BPM segue a DAW (%f)", proc.getUiBpm());
+        d.pump(120);
+        CHECK(std::abs(d.bpmAlpha() - 0.5f) < 0.01f, "BPM esbate com host");
+        d.clickSyncSeg(1); // MANUAL clicado a sério
+        CHECK(proc.getSyncMode() == "man", "seletor põe MAN");
+        d.runAudio();
+        CHECK(! proc.isTempoFromHost(), "MAN ignora o host");
+        d.pump(120);
+        CHECK(std::abs(d.bpmAlpha() - 1.f) < 0.01f, "BPM acende em MAN");
+        d.clickSyncSeg(0); // de volta a HOST
+        d.runAudio();
+        d.pump(120);
+        CHECK(std::abs(d.bpmAlpha() - 0.5f) < 0.01f, "BPM volta a esbater em HOST");
+        proc.setPlayHead(nullptr);
     }
 
     // U9. Preset stepper: setas aplicam mesmo (nomes + valores + wrap).
