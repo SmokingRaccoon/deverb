@@ -26,8 +26,8 @@ public:
     void reset();
 
     void setMode(Mode m);
-    void setRate(float r)            { rate = juce::jlimit(0.25f, 2.f, r); }
-    void setLfoDepth(float d)        { lfoDepth = juce::jlimit(0.f, 1.f, d); }
+    void setRate(float r)            { smoothRate.setTargetValue(juce::jlimit(0.25f, 2.f, r)); }
+    void setLfoDepth(float d)        { smoothLfo.setTargetValue(juce::jlimit(0.f, 1.f, d)); }
     void setCaptureBeats(double b)   { captureBeats = juce::jlimit(0.5, 8.0, b); }
     void setDuckDepth(float d)       { duckDepth = juce::jlimit(0.f, 1.f, d); }
     void setThrowButton(bool b)      { throwBtn = b; }
@@ -55,7 +55,8 @@ private:
     int cap = 0, w = 0;
 
     Mode mode = Mode::Off;
-    float rate = 1.f, lfoDepth = 0.f;
+    // Varispeed/LFO suavizados por amostra (sweeps de rate sem zipper).
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothRate, smoothLfo;
     double captureBeats = 2.0;
     float duckDepth = 0.3f;
     bool throwBtn = false, lastThrowBtn = false;

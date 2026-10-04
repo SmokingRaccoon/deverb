@@ -32,9 +32,9 @@ public:
     }
     void setPattern(int bits)        { pattern = (uint16_t) (bits & 0xFFFF); }
     void setSmooth(float s);         // 0..1 (faca..suave)
-    void setDepth(float d)           { depth = juce::jlimit(0.f, 1.f, d); }
-    void setMix(float m)             { mix = juce::jlimit(0.f, 1.f, m); }
-    void setPanAlt(float p)          { panAlt = juce::jlimit(0.f, 1.f, p); }
+    void setDepth(float d);          // com slew (varrimentos sem zipper)
+    void setMix(float m);            // com slew
+    void setPanAlt(float p);         // com slew
     void setTrigMode(TrigMode m)     { trigMode = m; }
     void setEnvThrDb(float db)       { envThr = std::pow(10.f, juce::jlimit(-60.f, 0.f, db) / 20.f); }
     void setInternalBpm(double bpm)  { internalBpm = juce::jlimit(40.0, 240.0, bpm); }
@@ -77,7 +77,8 @@ private:
     TempoInfo::Note rate = TempoInfo::Note::N16;
     int numSteps = 16;
     uint16_t pattern = 0x1111;
-    float depth = 1.f, mix = 1.f, panAlt = 0.f;
+    float depth = 1.f, depthT = 1.f, mix = 1.f, mixT = 1.f, panAlt = 0.f, panAltT = 0.f;
+    static constexpr float slewK = 0.003f; // ~30 ms como nos combs
     float attackA = 1.f, releaseA = 1.f; // coefs one-pole p/ smooth
     float envThr = 0.126f;               // -18 dB
     double internalBpm = 120.0;

@@ -6,6 +6,10 @@ void ReverseEngine::prepare(double sr)
     cap = (int) (ringSec * sr) + 64;
     ringL.assign((size_t) cap, 0.f);
     ringR.assign((size_t) cap, 0.f);
+    smoothRate.reset(sr, 0.05);
+    smoothLfo.reset(sr, 0.05);
+    smoothRate.setCurrentAndTargetValue(1.f);
+    smoothLfo.setCurrentAndTargetValue(0.f);
     reset();
 }
 
@@ -111,7 +115,8 @@ void ReverseEngine::renderBlock(juce::AudioBuffer<float>& out, const TempoInfo& 
             lfoPhase += juce::MathConstants<double>::twoPi * 0.1 / sampleRate;
             if (lfoPhase >= juce::MathConstants<double>::twoPi)
                 lfoPhase -= juce::MathConstants<double>::twoPi;
-            double step = (double) rate * (1.0 + (double) lfoDepth * 0.15 * std::sin(lfoPhase));
+            double step = (double) smoothRate.getNextValue()
+                        * (1.0 + (double) smoothLfo.getNextValue() * 0.15 * std::sin(lfoPhase));
 
             double edge = (double) w - captureLen;
             double dist = playPos - edge;
@@ -148,7 +153,7 @@ void ReverseEngine::renderBlock(juce::AudioBuffer<float>& out, const TempoInfo& 
                 oL *= g * g;
                 oR *= g * g;
             }
-            throwPos -= (double) rate;
+            throwPos -= (double) smoothRate.getNextValue();
             if (throwPos <= throwEnd)
                 throwing = false;
         }

@@ -25,6 +25,7 @@ void Granular::reset()
     cachedDecayGain = 1.f;
     activeLeft = releaseLeft = 0;
     outFade = 0.f;
+    mix = mixT;
     dryCut = 1.f;
     internalBeats = 0.0;
     lastQuantum = -1.0;
@@ -40,9 +41,18 @@ void Granular::setMode(Mode m)
     if (m != mode)
     {
         mode = m;
-        playing = false; // trocar de modo liberta (sem cauda pendurada)
-        releaseLeft = 0;
-        outFade = 0.f; // e o próximo grab arranca do silêncio (sem clique)
+        if (playing && releaseLeft <= 0)
+        {
+            // Troca com release em vez de corte seco (sem clique na cauda).
+            int xf = juce::jmax(64, (int) (xfadeMs * 0.001 * sampleRate));
+            releaseLeft = xf * 2;
+        }
+        else
+        {
+            playing = false;
+            releaseLeft = 0;
+            outFade = 0.f; // e o próximo grab arranca do silêncio (sem clique)
+        }
     }
 }
 
@@ -127,6 +137,8 @@ void Granular::process(juce::AudioBuffer<float>& buffer, const TempoInfo& tempo)
 
     for (int i = 0; i < n; ++i)
     {
+        mix += (mixT - mix) * slewK; // varrimentos sem zipper
+
         // Fase p/ quantização: ppq do host ou relógio interno.
         double phase;
         if (tempo.fromHost && tempo.isPlaying)

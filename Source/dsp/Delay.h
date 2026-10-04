@@ -65,8 +65,12 @@ private:
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothDelay, smoothFb, smoothMix;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothFreeze; // 0..1
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothDrive, smoothSpread;
-    float dampA = 1.0f;       // coef. one-pole (recalculado por bloco)
+    float dampA = 1.0f, dampAT = 1.0f; // alvo; slew no process (sem zipper)
     float dampStateL = 0.f, dampStateR = 0.f;
+    // DC blocker no wet (10 Hz): sem ele o loop com fb 0.95 amplifica DC ×20.
+    // Só no wet — o dry fica bit-transparente (testes de passthrough).
+    float dcLpL = 0.f, dcLpR = 0.f, dcA = 1.0f;
+    static constexpr float slewDampK = 0.003f; // ~30 ms como nos combs
     double wowPhase = 0.0;
     float wowRate = 1.f, wowDepthMs = 4.f;
     int testDelaySamples = -1; // >=0 = override de teste

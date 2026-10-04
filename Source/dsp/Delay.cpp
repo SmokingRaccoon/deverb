@@ -16,6 +16,7 @@ void Delay::prepare(double sr, int maxBlockSize)
     smoothFreeze.reset(sr, 0.03);
     smoothDrive.reset(sr, 0.03);
     smoothSpread.reset(sr, 0.03);
+    dcA = 1.f - std::exp(-juce::MathConstants<float>::twoPi * 12.f / (float) sr);
     smoothFade.reset(sr, 0.04);
     smoothFade.setCurrentAndTargetValue(1.f);
     pendingSwap = false;
@@ -37,6 +38,8 @@ void Delay::reset()
 {
     line.reset();
     dampStateL = dampStateR = 0.f;
+    dampA = dampAT;
+    dcLpL = dcLpR = 0.f;
     wowPhase = 0.0;
     revVoice.reset();
     pendingSwap = false;
@@ -71,8 +74,8 @@ void Delay::setTempoBpm(double b) { bpm = juce::jlimit(40.0, 240.0, b); }
 void Delay::setDampingHz(float hz)
 {
     hz = juce::jlimit(100.f, 20000.f, hz);
-    // one-pole lowpass: a = 1 - exp(-2π fc / sr)
-    dampA = 1.f - std::exp(-juce::MathConstants<float>::twoPi * hz / (float) sampleRate);
+    // one-pole lowpass: a = 1 - exp(-2π fc / sr); com slew (varrimentos).
+    dampAT = 1.f - std::exp(-juce::MathConstants<float>::twoPi * hz / (float) sampleRate);
 }
 
 void Delay::process(juce::AudioBuffer<float>& buffer)
@@ -167,6 +170,12 @@ void Delay::process(juce::AudioBuffer<float>& buffer)
         float inL = buffer.getSample(0, i);
         float inR = (nCh > 1) ? buffer.getSample(1, i) : inL;
 
+        // Slew do damping + DC blocker (só wet; o dry fica transparente).
+        dampA += (dampAT - dampA) * slewDampK;
+        dcLpL += dcA * (inL - dcLpL);
+        dcLpR += dcA * (inR - dcLpR);
+        const float xL = inL - dcLpL, xR = inR - dcLpR;
+
         float wetL = 0.f, wetR = 0.f;
 
         if (algo == Algo::Tape)
@@ -183,8 +192,8 @@ void Delay::process(juce::AudioBuffer<float>& buffer)
             // Drive: mistura seco→saturado (drive 0 = transparente).
             float k = 1.f + drv * 4.f;
             float norm = 1.f / std::tanh(k);
-            float drL = inL * (1.f - drv) + std::tanh(inL * k) * norm * drv;
-            float drR = inR * (1.f - drv) + std::tanh(inR * k) * norm * drv;
+            float drL = xL * (1.f - drv) + std::tanh(xL * k) * norm * drv;
+            float drR = xR * (1.f - drv) + std::tanh(xR * k) * norm * drv;
             line.pushSample(0, drL * (1.f - frz) + dampStateL * fb);
             if (nCh > 1)
                 line.pushSample(1, drR * (1.f - frz) + dampStateR * fb);
@@ -196,9 +205,9 @@ void Delay::process(juce::AudioBuffer<float>& buffer)
             dampStateL += a * (wetL - dampStateL);
             dampStateR += a * (wetR - dampStateR);
             // Cruzamento: spread=1 → L alimenta R e vice-versa (clássico).
-            float w0 = inL * (1.f - frz)
+            float w0 = xL * (1.f - frz)
                      + (dampStateL * (1.f - spread) + dampStateR * spread) * fb;
-            float w1 = inR * (1.f - frz)
+            float w1 = xR * (1.f - frz)
                      + (dampStateR * (1.f - spread) + dampStateL * spread) * fb;
             line.pushSample(0, w0);
             if (nCh > 1)
@@ -220,19 +229,19 @@ void Delay::process(juce::AudioBuffer<float>& buffer)
             dampStateL += a * (wetL - dampStateL);
             dampStateR += a * (wetR - dampStateR);
             // Feedback da soma dos taps com damping (denso e escuro).
-            line.pushSample(0, inL * (1.f - frz) + dampStateL * fb);
+            line.pushSample(0, xL * (1.f - frz) + dampStateL * fb);
             if (nCh > 1)
-                line.pushSample(1, inR * (1.f - frz) + dampStateR * fb);
+                line.pushSample(1, xR * (1.f - frz) + dampStateR * fb);
         }
-        else // Digital (bit-idêntico à Fase 1)
+        else // Digital (estrutura da Fase 1 + slew/DC no wet)
         {
             wetL = line.popSample(0, d, true);
             wetR = (nCh > 1) ? line.popSample(1, d, true) : wetL;
             dampStateL += a * (wetL - dampStateL);
             dampStateR += a * (wetR - dampStateR);
-            line.pushSample(0, inL * (1.f - frz) + dampStateL * fb);
+            line.pushSample(0, xL * (1.f - frz) + dampStateL * fb);
             if (nCh > 1)
-                line.pushSample(1, inR * (1.f - frz) + dampStateR * fb);
+                line.pushSample(1, xR * (1.f - frz) + dampStateR * fb);
         }
 
         wetL *= fade;

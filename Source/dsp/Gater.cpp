@@ -14,6 +14,9 @@ void Gater::reset()
     cooldownLeft = 0;
     resetPending = false;
     gateState = 1.f;
+    depth = depthT;
+    mix = mixT;
+    panAlt = panAltT;
     currentStep.store(0);
 }
 
@@ -25,6 +28,10 @@ void Gater::setSmooth(float s)
     double c = 1.0 - std::exp(-1.0 / (t * sampleRate));
     attackA = releaseA = (float) c;
 }
+
+void Gater::setDepth(float d)  { depthT = juce::jlimit(0.f, 1.f, d); }
+void Gater::setMix(float m)    { mixT = juce::jlimit(0.f, 1.f, m); }
+void Gater::setPanAlt(float p) { panAltT = juce::jlimit(0.f, 1.f, p); }
 
 void Gater::scanMidi(const juce::MidiBuffer& midi)
 {
@@ -47,14 +54,17 @@ void Gater::process(juce::AudioBuffer<float>& buffer, const TempoInfo& tempo)
     double bpm = useHost ? tempo.bpm : internalBpm;
     double beatsPerSample = bpm / 60.0 / sampleRate;
     double stepDur = stepBeats();
-    float closedLevel = 1.f - depth;
-    float dry = 1.f - mix;
 
     // Cooldown do transient em amostras (~50 ms).
     const int cooldownMax = (int) (0.05 * sampleRate);
 
     for (int i = 0; i < n; ++i)
     {
+        // Slew de depth/mix/pan: varrimentos sem zipper.
+        depth += (depthT - depth) * slewK;
+        mix += (mixT - mix) * slewK;
+        panAlt += (panAltT - panAlt) * slewK;
+
         double phaseBeats;
         if (useHost)
         {
@@ -90,9 +100,10 @@ void Gater::process(juce::AudioBuffer<float>& buffer, const TempoInfo& tempo)
         if (i == 0)
             currentStep.store(step);
 
-        float target = ((pattern >> step) & 1u) ? 1.f : closedLevel;
+        float target = ((pattern >> step) & 1u) ? 1.f : (1.f - depth);
         float c = (target > gateState) ? attackA : releaseA;
         gateState += (target - gateState) * c;
+        float dry = 1.f - mix;
 
         // Pan alternado por passo (só no caminho gated).
         float gL = gateState, gR = gateState;

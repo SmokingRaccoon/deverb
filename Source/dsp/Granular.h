@@ -40,7 +40,7 @@ public:
     void setPitchSt(float st)        { pitchSt = juce::jlimit(-12.f, 12.f, st); }
     void setFlux(float f)            { flux = juce::jlimit(0.f, 1.f, f); }
     void setXfadeMs(float ms)        { xfadeMs = juce::jlimit(1.f, 50.f, ms); }
-    void setMix(float m)             { mix = juce::jlimit(0.f, 1.f, m); }
+    void setMix(float m)             { mixT = juce::jlimit(0.f, 1.f, m); } // com slew
     void setInterrupt(bool b)        { interrupt = b; }
     void setInternalBpm(double bpm)  { internalBpm = juce::jlimit(40.0, 240.0, bpm); }
     // Reseed p/ descorrelacionar FWD e REV (mesma seed = mesmos glitches).
@@ -70,7 +70,8 @@ private:
     TempoInfo::Note timeNote = TempoInfo::Note::Free;
     int repeats = 4;
     float decay = 0.85f, timeMs = 250.f, pitchSt = 12.f, flux = 0.3f;
-    float xfadeMs = 8.f, mix = 0.5f;
+    float xfadeMs = 8.f, mix = 0.5f, mixT = 0.5f;
+    static constexpr float slewK = 0.003f; // ~30 ms
 
     double sampleRate = 48000.0;
     double internalBpm = 120.0;

@@ -242,7 +242,9 @@ private:
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothPre;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothMix, smoothFreeze;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothFade; // estrutural
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothWidth; // imagem sem zipper
     float width = 1.f;
+    float dcLpL = 0.f, dcLpR = 0.f, dcA = 1.0f; // blocker 12 Hz só no wet
     bool frozen = false;
     EnableRamp pw; // bypass por módulo
     // Troca estrutural adiada: fade-out → aplica no silêncio → fade-in.

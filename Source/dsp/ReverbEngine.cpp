@@ -358,10 +358,13 @@ void Reverb::prepare(double sampleRate, int maxBlockSize)
     smoothMix.reset(sr, 0.03);
     smoothFreeze.reset(sr, 0.05);
     smoothFade.reset(sr, 0.04);
+    smoothWidth.reset(sr, 0.03);
     smoothPre.setCurrentAndTargetValue(0.f);
     smoothMix.setCurrentAndTargetValue(0.3f);
     smoothFreeze.setCurrentAndTargetValue(0.f);
     smoothFade.setCurrentAndTargetValue(1.f);
+    smoothWidth.setCurrentAndTargetValue(1.f);
+    dcA = 1.f - std::exp(-juce::MathConstants<float>::twoPi * 12.f / (float) sr);
     pendingStructural = false;
     pendingReset = false;
     pendingSizeChange = false;
@@ -380,6 +383,8 @@ void Reverb::reset()
     freeverb.reset();
     fdn.reset();
     plate.reset();
+    dcLpL = dcLpR = 0.f;
+    smoothWidth.setCurrentAndTargetValue(width);
     shimmer.reset();
     std::fill(preL.begin(), preL.end(), 0.f);
     std::fill(preR.begin(), preR.end(), 0.f);
@@ -451,7 +456,11 @@ void Reverb::setDamp01(float d)
     shimmer.setDampFc(fc);
 }
 
-void Reverb::setWidth01(float w) { width = juce::jlimit(0.f, 1.f, w); }
+void Reverb::setWidth01(float w)
+{
+    width = juce::jlimit(0.f, 1.f, w);
+    smoothWidth.setTargetValue(width);
+}
 
 void Reverb::setPredelaySamples(int s)
 {
@@ -541,10 +550,13 @@ void Reverb::process(juce::AudioBuffer<float>& buffer)
 
         float inL = buffer.getSample(0, i);
         float inR = (nCh > 1) ? buffer.getSample(1, i) : inL;
+        dcLpL += dcA * (inL - dcLpL);
+        dcLpR += dcA * (inR - dcLpR);
+        const float xL = inL, xR = inR; // BISECT: estados atualizam, não usados
 
         // Pre-delay com leitura interpolada (sem cliques ao mudar).
-        preL[(size_t) preW] = inL;
-        preR[(size_t) preW] = inR;
+        preL[(size_t) preW] = xL;
+        preR[(size_t) preW] = xR;
         float rp = (float) preW - preD;
         while (rp < 0.f) rp += (float) preCap;
         int i0 = (int) rp;
@@ -568,11 +580,12 @@ void Reverb::process(juce::AudioBuffer<float>& buffer)
             case Algo::Shimmer: shimmer.processSample(dL, dR, wL, wR); break;
         }
 
-        // Width: mid/side (1 = stereo normal, 0 = mono).
+        // Width: mid/side (1 = stereo normal, 0 = mono), suavizado.
+        float wCur = smoothWidth.getNextValue();
         float mid = (wL + wR) * 0.5f;
         float side = (wL - wR) * 0.5f;
-        wL = mid + side * width;
-        wR = mid - side * width;
+        wL = mid + side * wCur;
+        wR = mid - side * wCur;
 
         wL = lpL.processSample(0, hpL.processSample(0, wL));
         wR = lpR.processSample(1, hpR.processSample(1, wR));
