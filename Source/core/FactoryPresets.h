@@ -96,6 +96,22 @@ inline void applyFactoryPreset(juce::AudioProcessorValueTreeState& apvts, int in
     const auto& presets = deVerbFactoryPresets();
     if (index < 0 || index >= (int) presets.size())
         return;
+    // Base neutra: os presets são deltas sobre os defaults ("o resto fica
+    // nos defaults"). Sem isto, motores ligados por um preset (REV Loop,
+    // granular) ficavam a tocar ao navegar para presets que não lhes tocam
+    // e o seletor "não escolhia" — o nome mudava mas o som ficava preso.
+    // O tempo da sessão não pertence ao preset e sobrevive.
+    for (int i = 0; i < apvts.state.getNumChildren(); ++i)
+    {
+        auto child = apvts.state.getChild(i);
+        if (! child.hasType("PARAM"))
+            continue; // "v4ui" (selMod/syncMode) fica como está
+        juce::String id = child.getProperty("id").toString();
+        if (id == "tempo_bpm")
+            continue;
+        if (auto* p = apvts.getParameter(id))
+            p->setValueNotifyingHost(p->getDefaultValue());
+    }
     applyRealList(apvts, presets[(size_t) index].values);
 }
 

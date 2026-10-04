@@ -58,7 +58,7 @@ private:
     static constexpr double ringSec = 4.0;
 
     float readRing(int ch, float pos) const; // interpolação linear, pos em amostras
-    float readLoop(int ch, float pos) const; // idem, sobre a foto do grab
+    float readLoop(int ch, float pos) const; // idem, sobre a foto (pos relativa a 0)
     void startGrab(double lenBeats, double bpm);
 
     Mode mode = Mode::Off;
@@ -80,8 +80,11 @@ private:
     int cap = 0, w = 0;
     // Foto do loop no instante do grab: a reprodução lê daqui (estável),
     // enquanto o anel continua a gravar para o próximo grab/detetores.
-    // Sem isto, activeLeft longo relia áudio novo em vez do fragmento.
+    // Sem isto, activeLeft longo relia áudio novo em vez do fragmento — e
+    // a pausa da gravação a tocar abria buracos na linha do tempo (o grab
+    // seguinte apanhava um salto temporal a meio do fragmento).
     std::vector<float> loopL, loopR;
+    int fragLen = 0; // amostras válidas na foto (wrap da leitura)
 
     // Estado de reprodução:
     bool playing = false;

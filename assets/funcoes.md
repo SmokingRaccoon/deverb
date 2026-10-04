@@ -133,7 +133,7 @@ módulo da surpresa; trabalha por último, sobre o som já com espaço.
 | DECAY | `gr_decay` | knob 0.5–0.99 | 0.85 | Quanto cada repetição perde de volume. |
 | TIME | `gr_time` / nota | knob 60–8000 ms + combo | 250 / Free | Duração do glitch (modos não-BeatRepeat). |
 | PITCH | `gr_pitch` | knob −12–+12 st | +12 | Tom das repetições (modo Pitch). Interpolação linear = estética lo-fi assumida (sem anti-alias). |
-| FLUX | `gr_flux` | knob 0–1 | 0.30 | Re-aleatorização interna (variação orgânica). |
+| FLUX | `gr_flux` | knob 0–1 | 0.30 | Densidade do chop no modo Slice (2–8 fatias; só conta aí). |
 | XFADE | `gr_xfade` | knob 1–50 ms | 8.0 | Crossfade das emendas (anti-cliques). |
 | MIX | `gr_mix` | knob 0–1 | 0.50 | Quantidade de glitch no som. |
 | Interrupt | `gr_interrupt` | toggle | OFF | ON = o glitch pausa o som seco (efeito total). |

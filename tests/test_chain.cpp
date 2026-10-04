@@ -38,6 +38,7 @@ static int mainFuzz();
 static int mainCivil();
 static int mainPower();
 static int mainIds();
+static int mainPreset();
 int main()
 {
     const double sr = 48000.0;
@@ -219,6 +220,7 @@ int main()
     mainCivil();
     mainPower();
     mainIds();
+    mainPreset();
 
     if (failures == 0) std::printf("\nALL CHAIN TESTS PASSED\n");
     else std::printf("\n%d FAILURES\n", failures);
@@ -254,6 +256,43 @@ static int mainIds()
     CHECK(missing == 0, "todos os IDs de presets/RANDOM existem (%d em falta)", missing);
     int nParams = p.getParameters().size();
     CHECK(nParams == 122, "122 IDs congelados (got %d)", nParams);
+    return failures;
+}
+
+// --- Presets deterministas: navegar não deixa motores presos ---
+// Os presets são deltas sobre base neutra; sem a base, o REV Loop ou o
+// granular de um preset ficavam a tocar nos presets seguintes ("o seletor
+// não escolhia": o nome mudava mas o som ficava preso).
+static int mainPreset()
+{
+    DeVerbProcessor p;
+    p.prepareToPlay(48000.0, 512);
+    auto snap = [&]
+    {
+        std::vector<float> v;
+        for (auto* par : p.getParameters()) v.push_back(par->getValue());
+        return v;
+    };
+    // 1. Reverse Tail liga o Loop; Init a seguir tem de o calar.
+    applyFactoryPreset(p.apvts, 4); // Reverse Tail (rev_mode Loop)
+    juce::MidiBuffer midi;
+    juce::AudioBuffer<float> buf(2, 512);
+    for (int b = 0; b < 10; ++b) { buf.clear(); p.processBlock(buf, midi); }
+    applyFactoryPreset(p.apvts, 0); // Init
+    CHECK(p.apvts.getRawParameterValue("rev_mode")->load() == 0.f,
+          "Init cala o REV Loop do preset anterior");
+    CHECK(p.apvts.getRawParameterValue("gr_mode")->load() == 0.f,
+          "Init cala o granular do preset anterior");
+    // 2. Determinismo: A -> B -> A repõe os mesmos valores.
+    applyFactoryPreset(p.apvts, 3); // Big Hall Space
+    auto a3 = snap();
+    applyFactoryPreset(p.apvts, 9); // Shimmer Pad
+    applyFactoryPreset(p.apvts, 3); // voltar
+    auto a3b = snap();
+    bool same = (a3.size() == a3b.size());
+    for (size_t i = 0; same && i < a3.size(); ++i)
+        same = (a3[i] == a3b[i]);
+    CHECK(same, "preset deterministicos: 3->9->3 repõe tudo");
     return failures;
 }
 

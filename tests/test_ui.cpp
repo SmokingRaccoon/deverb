@@ -64,6 +64,29 @@ struct UiSessionDriver
     {
         if (auto* k = ed.findKey("rev_throw")) k->press();
     }
+    // PROBE temporário: aplica presets via stepper e lê valores reais
+    void probePreset(int i)
+    {
+        if (ed.presetStepper != nullptr) ed.presetStepper->applyIndex(i);
+        pump(60);
+    }
+    void clickPresetArrow(bool next)
+    {
+        if (ed.presetStepper == nullptr) return;
+        // setas são os 2 filhos TextButton (0=prev, 1=next)
+        for (int c = 0; c < ed.presetStepper->getNumChildComponents(); ++c)
+            if (auto* b = dynamic_cast<juce::TextButton*>(
+                    ed.presetStepper->getChildComponent(c)))
+            {
+                bool isNext = b->getX() > 100;
+                if (isNext == next) { b->triggerClick(); break; }
+            }
+        pump(60);
+    }
+    int presetIndex()
+    {
+        return ed.presetStepper != nullptr ? ed.presetStepper->getIndex() : -9;
+    }
     bool panelVisible(int e, int m) { return ed.panels[e][m]->isVisible(); }
 };
 
@@ -224,6 +247,25 @@ int main()
         CHECK(d.stored("rev_throw") == 1.f, "THROW press segura a 1");
         d.pump(150);
         CHECK(d.stored("rev_throw") == 0.f, "THROW larga após o hold");
+    }
+
+    // U9. Preset stepper: setas aplicam mesmo (nomes + valores + wrap).
+    // Os presets são deltas sobre base neutra: navegar nunca deixa motores
+    // presos (era o "seletor não escolhia" — o nome mudava, o som ficava).
+    {
+        d.probePreset(9); // Shimmer Pad: algo 3, mix 0.5
+        CHECK(d.presetIndex() == 9, "preset idx 9");
+        CHECK(d.stored("fwd_verb_algo") == 3.f, "Shimmer Pad aplica algo");
+        CHECK(std::abs(d.stored("fwd_verb_mix") - 0.5f) < 0.01f, "Shimmer Pad aplica mix");
+        d.clickPresetArrow(true); // 9 -> 10 Build Up (decay 4)
+        CHECK(d.presetIndex() == 10, "seta next avança");
+        CHECK(std::abs(d.stored("fwd_verb_decay") - 4.f) < 0.05f, "Build Up aplica decay");
+        d.clickPresetArrow(true); // 10 -> 0 wrap (Init: mixes 0)
+        CHECK(d.presetIndex() == 0, "seta next faz wrap");
+        CHECK(d.stored("fwd_gate_mix") == 0.f, "Init aplica gate_mix 0");
+        d.clickPresetArrow(false); // 0 -> 10
+        CHECK(d.presetIndex() == 10, "seta prev recua com wrap");
+        CHECK(noisyFinite(proc), "DSP finito após navegar presets");
     }
 
     if (failures == 0) std::printf("\nALL UI SESSION TESTS PASSED\n");

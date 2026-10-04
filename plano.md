@@ -761,6 +761,13 @@ ficheiro.
 - **Duck em escada**: o envelope lia sempre a última amostra gravada
   (constante no bloco); bursts curtos nem duckavam. Cursor por amostra
   sobre `[w-n, w)`; teste 21 trava regressão.
+- **Seletor de presets não escolhia**: presets de fábrica são deltas e o
+  seletor mudava o nome mas motores ligados (REV Loop, granular) ficavam a
+  tocar nos presets seguintes. `applyFactoryPreset` repõe defaults (menos
+  `tempo_bpm`) antes dos deltas; testes U9 + chain-preset travam.
+- **Glitch com salto temporal**: a gravação pausava a tocar e o grab seguinte
+  colava áudio antigo a novo (foto `loopL/R` existia mas ninguém lia dela).
+  Grava sempre + foto no grab + costura loop clássica na foto; teste 22.
 
 ## 18. Glossário rápido
 

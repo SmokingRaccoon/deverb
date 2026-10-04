@@ -946,6 +946,73 @@ int mainGranular()
         CHECK(zc > 90 && zc < 130, "pitch +12 dobra a frequência (travessias %d)", zc);
     }
 
+    // --- 22. Grab contínuo: sem buracos na linha do tempo ---
+    // A gravação pausava a tocar; o grab seguinte continha um salto temporal
+    // (áudio antigo colado a áudio novo). Agora grava sempre + foto: com um
+    // B-fill curto após o drain, o 2º fragmento é [silêncio drain, B].
+    {
+        Granular g;
+        g.prepare(48000.0);
+        g.setMode(Granular::Mode::BeatRepeat);
+        g.setTrig(Granular::Trig::Manual);
+        g.setLenNote(TempoInfo::Note::N16); // 6000 amostras @120
+        g.setRepeats(1);
+        g.setMix(1.f);
+        g.setInterrupt(false);
+        g.setInternalBpm(120.0);
+        auto granRecord = [&](int total, float v) // grava v sem disparar
+        {
+            g.setMode(Granular::Mode::Off);
+            juce::AudioBuffer<float> blk(2, 512);
+            int pos = 0;
+            while (pos < total)
+            {
+                int n = juce::jmin(512, total - pos);
+                blk.setSize(2, n, false, false, true);
+                for (int i = 0; i < n; ++i) { blk.setSample(0, i, v); blk.setSample(1, i, v); }
+                g.process(blk, t);
+                pos += n;
+            }
+            g.setMode(Granular::Mode::BeatRepeat);
+        };
+        auto pulse = [&] // um flanco manual = um grab
+        {
+            g.setManual(true);
+            juce::AudioBuffer<float> b(2, 512);
+            b.clear();
+            g.process(b, t);
+            g.setManual(false);
+        };
+        auto drain = [&] // processa silêncio até calar (com teto)
+        {
+            juce::AudioBuffer<float> b(2, 512);
+            for (int k = 0; k < 300 && g.isActive(); ++k)
+            {
+                b.clear();
+                g.process(b, t);
+            }
+        };
+        granRecord(48000, 0.25f); // história A
+        pulse();  // grab 1 (fragmento A)
+        drain();  // toca até ao fim (a gravar silêncio, sempre)
+        granRecord(3000, -0.25f); // B curto
+        pulse();  // grab 2: [silêncio, B] (novo) vs [A, B] (velho)
+        std::vector<float> out2;
+        juce::AudioBuffer<float> b(2, 512);
+        for (int k = 0; k < 60 && (g.isActive() || k < 14); ++k)
+        {
+            b.clear();
+            g.process(b, t);
+            for (int i = 0; i < 512; ++i) out2.push_back(b.getSample(0, i));
+        }
+        double m = 0.0;
+        int mm = juce::jmin(6000, (int) out2.size());
+        for (int i = 0; i < mm; ++i) m += out2[(size_t) i];
+        m /= juce::jmax(1, mm);
+        // Novo ≈ -0.125 (metade silêncio, metade B); velho ≈ 0.0 (A+B).
+        CHECK(m < -0.05, "grab sem salto temporal (média %f)", m);
+    }
+
     return failures;
 }
 

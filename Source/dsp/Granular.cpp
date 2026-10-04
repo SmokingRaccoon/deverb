@@ -75,10 +75,10 @@ float Granular::readRing(int ch, float pos) const
 
 float Granular::readLoop(int ch, float pos) const
 {
-    // loopStart é sempre >= 0 (foto copiada para [0, len)); o wrap trata-se
-    // fora, por isso aqui basta o clamp defensivo.
-    int len = (int) loopL.size();
-    if (len <= 0)
+    // A foto vive em [0, fragLen); o wrap da costura cai aqui dentro
+    // (loop clássico) em vez de ler história vizinha do anel.
+    int len = fragLen;
+    if (len <= 0 || len > (int) loopL.size() || len > (int) loopR.size())
         return 0.f;
     while (pos < 0.f) pos += (float) len;
     while (pos >= (float) len) pos -= (float) len;
@@ -131,6 +131,15 @@ void Granular::startGrab(double lenBeats, double bpm)
                      : TempoInfo::beatsToSeconds(TempoInfo::noteToBeats(timeNote), bpm) * 1000.0;
         activeLeft = (int) juce::jlimit(64.0, 8.0 * sr, durMs * 0.001 * sr);
     }
+    // Foto do fragmento FINAL (após o /8 do Stutter): a reprodução lê daqui
+    // e o anel pode continuar a gravar sem a contaminar. Sem alloc: os
+    // vetores vêm pré-alocados do prepare (loopLen <= cap - 64).
+    fragLen = juce::jmin(cap, (int) std::ceil(loopLen));
+    for (int k = 0; k < fragLen; ++k)
+    {
+        loopL[(size_t) k] = readRing(0, (float) ((double) loopStart + k));
+        loopR[(size_t) k] = readRing(1, (float) ((double) loopStart + k));
+    }
     releaseLeft = 0;
     playing = true;
 }
@@ -175,15 +184,13 @@ void Granular::process(juce::AudioBuffer<float>& buffer, const TempoInfo& tempo)
         float inL = buffer.getSample(0, i);
         float inR = (nCh > 1) ? buffer.getSample(1, i) : inL;
 
-        // Pausa a gravação a tocar: senão o loop (e o pré-loop do xfade da
-        // costura) era rescrito a meio e os repeats tocavam áudio novo.
+        // Grava sempre: a reprodução lê a foto (imune), por isso não há
+        // motivo para pausar — e a pausa abria buracos na linha do tempo
+        // (o grab seguinte continha um salto temporal a meio do fragmento).
         // O retrigger só dispara parado, por isso nada se perde.
-        if (! playing)
-        {
-            ringL[(size_t) w] = inL;
-            ringR[(size_t) w] = inR;
-            if (++w >= cap) w = 0;
-        }
+        ringL[(size_t) w] = inL;
+        ringR[(size_t) w] = inR;
+        if (++w >= cap) w = 0;
 
         // --- Triggers (só com modo ativo e sem reprodução em curso) ---
         if (mode != Mode::Off && !playing)
@@ -258,19 +265,29 @@ void Granular::process(juce::AudioBuffer<float>& buffer, const TempoInfo& tempo)
                 loopsDone += 1.0;
             }
             // Distância à costura mais próxima → crossfade se < xf.
+            // Costura loop clássica NA FOTO (relativo a loopStart): a
+            // "volta anterior" absoluta lia história vizinha do anel, que
+            // com gravação contínua já não é o fragmento (smear do input
+            // ao vivo na costura). FWD mistura fim→começo, REV começo→fim.
+            double rel = playPos - loopStart;
             double distEdge = (playDir > 0) ? (loopEnd - playPos) : (playPos - loopStart);
             if (distEdge < (double) xf && distEdge >= 0.0)
             {
                 t = (float) (distEdge / (double) xf);
-                altPos = playPos - playDir * loopLen; // volta anterior (ainda válida)
+                altPos = (playDir > 0) ? (loopStart + rel - loopLen + xf)
+                                       : (loopStart + loopLen - xf + rel);
             }
             float wNew = std::sin(t * juce::MathConstants<float>::halfPi);
             float wOld = std::cos(t * juce::MathConstants<float>::halfPi);
 
-            float vL = readRing(0, (float) playPos);
-            float vR = readRing(nCh > 1 ? 1 : 0, (float) playPos);
-            float oL = readRing(0, (float) altPos);
-            float oR = readRing(nCh > 1 ? 1 : 0, (float) altPos);
+            // Leitura da foto (posições relativas ao início do fragmento):
+            // estável mesmo com o anel a gravar por baixo; a costura faz
+            // wrap dentro do fragmento (loop clássico).
+            float relAlt = (float) (altPos - loopStart);
+            float vL = readLoop(0, rel);
+            float vR = readLoop(nCh > 1 ? 1 : 0, rel);
+            float oL = readLoop(0, relAlt);
+            float oR = readLoop(nCh > 1 ? 1 : 0, relAlt);
             wetL = (vL * wNew + oL * wOld);
             wetR = (vR * wNew + oR * wOld);
 
