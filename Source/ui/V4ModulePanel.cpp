@@ -342,13 +342,29 @@ void V4ModulePanel::updateLinkState()
         else if (mod_ == "gran")
         {
             int mode = effDiscrete("mode", 0), trig = effDiscrete("trigger", 0);
+            int tni = effDiscrete("time_note", 0);
             bool off = (e.base == "chance" && trig != 0)
                     || (e.base == "env_thr" && trig != 1)
                     || (e.base == "repeats" && mode != 1)
-                    || (e.base == "time" && mode == 1)
+                    || (e.base == "time" && (mode == 1 || tni != 0))
+                    || (e.base == "decay" && mode != 1 && mode != 5)
                     || (e.base == "pitch" && mode != 4)
                     || (e.base == "flux" && mode != 2);
             dimA = off ? 0.38f : 1.f;
+            // TIME com nota: mostra o tempo locked (caixa + dot) em vez dos
+            // ms livres — mesma linguagem do MS do delay, mas aqui se vê o
+            // valor efetivo porque o painel não tem readout próprio.
+            if (e.base == "time" && tni != 0)
+            {
+                double lockedMs = TempoInfo::beatsToSeconds(
+                    TempoInfo::noteToBeats((TempoInfo::Note) juce::jlimit(0, 11, tni)),
+                    (double) proc_.getUiBpm()) * 1000.0;
+                float sk = toSkewed(e, (float) lockedMs);
+                e.dial->setNeedles(sk, sk, lockedMs, true);
+                e.dial->setAlpha(0.38f);
+                e.dial->refreshTextIfNeeded();
+                continue;
+            }
         }
         else if (mod_ == "delay")
         {
@@ -500,12 +516,17 @@ void V4ModulePanel::updateLinkState()
     }
     else if (mod_ == "gran")
     {
+        // Flash com hold de 250 ms por grab: o flag cru (playing por bloco)
+        // amostrado a 30 Hz aliasava em piscar ilegível; com hold, grabs
+        // densos dão sólido (sempre a agarrar) e esparsos dão flashes.
         bool active = engine_ == "rev" ? proc_.isRevGranularActive()
                                        : proc_.isGranularActive();
+        if (active) lastGrabMs_ = juce::Time::getMillisecondCounter();
+        bool hot = active || (juce::Time::getMillisecondCounter() - lastGrabMs_ < 250);
         if (auto* v = findViz(V4Viz::GranLed))
         {
-            v->setText(active ? "GRAB!" : "IDLE");
-            v->setHot(active);
+            v->setText(hot ? "GRAB!" : "IDLE");
+            v->setHot(hot);
         }
     }
 }

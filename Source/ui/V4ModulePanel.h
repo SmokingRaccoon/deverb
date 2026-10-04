@@ -54,6 +54,7 @@ private:
     std::vector<StepBtn> stepBtns_;
     std::vector<V4Viz*> vizs_;
     juce::OwnedArray<juce::Component> owned_;
+    juce::uint32 lastGrabMs_ = 0; // hold do flash GRAB! (LED legível)
 
     V4Dial* addDial(const juce::String& base, const juce::String& label,
                     int x, int y, const juce::Colour& acc);

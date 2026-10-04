@@ -773,6 +773,11 @@ ficheiro.
   RANDOM via tecla, HOST/MAN end-to-end (testes 26–34, U9, C2, routing).
   Bench §8 no i7 (48k/512): módulos ≤2.8%/core, default 3.2%, extremo 19%
   (dentro do orçamento). ASan+UBSan limpo nas 3 suites, 0 relatórios.
+- **Granular a fundo**: costura com xf stale no bloco do grab (+3 dB fantasma;
+  agora xeff por amostra; teste 37); decay do Stutter por tempo de fragmento
+  (antes morria em ~200 ms e o TIME era decorativo); TIME mostra o locked com
+  nota + DECAY esbate fora de BR/Stutter; LED GRAB! com hold de 250 ms (o flag
+  cru aliasava a 30 Hz).
 
 ## 18. Glossário rápido
 

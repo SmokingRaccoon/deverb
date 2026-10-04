@@ -89,6 +89,7 @@ struct UiSessionDriver
     }
     void flipStepFwd(int i) { ed.panels[0][0]->flipStep(i); pump(); }
     void flipStepRev(int i) { ed.panels[1][0]->flipStep(i); pump(); }
+    V4Viz* granLedFwd() { return ed.panels[0][3]->findViz(V4Viz::GranLed); }
     void pressThrow()
     {
         if (auto* k = ed.findKey("rev_throw")) k->press();
@@ -309,6 +310,49 @@ int main()
         d.pump(120);
         CHECK(std::abs(d.bpmAlpha() - 0.5f) < 0.01f, "BPM volta a esbater em HOST");
         proc.setPlayHead(nullptr);
+    }
+
+    // C3. Granular: TIME mostra o locked + dims por modo + LED com hold.
+    {
+        // T-NOTE 1/4 (idx 8): TIME esbate e a caixa mostra 500 ms @120
+        // (o knob de ms continua nos 250: é ele que não conta).
+        d.setParam("gr_time_note", 8.f / 11.f);
+        d.pump(120);
+        auto* timeDial = ed.findDial("gr_time");
+        CHECK(timeDial != nullptr, "dial TIME existe");
+        if (timeDial != nullptr)
+        {
+            CHECK(std::abs(timeDial->getAlpha() - 0.38f) < 0.02f, "TIME esbate com nota");
+            // 1/4 = 1 beat no BPM efetivo (o RANDOM anterior pode o ter mudado).
+            juce::String want = juce::String((int) std::round(60000.0 / proc.getUiBpm())) + " ms";
+            juce::String got = timeDial->getTextFromValue(timeDial->getValue());
+            CHECK(got == want, "TIME mostra locked (got %s, want %s)",
+                  got.toRawUTF8(), want.toRawUTF8());
+        }
+        // DECAY só conta em BeatRepeat/Stutter: em Slice esbate.
+        d.setParam("gr_mode", 2.f / 5.f); // Slice
+        d.pump(120);
+        auto* decDial = ed.findDial("gr_decay");
+        CHECK(decDial != nullptr && std::abs(decDial->getAlpha() - 0.38f) < 0.02f,
+              "DECAY esbate em Slice");
+        // LED: grab manual -> GRAB!, depois apaga com o hold.
+        // (O DSP tem de correr: o flag vem do processBlock.)
+        d.setParam("gr_trigger", 1.f); // Manual (idx 2/2)
+        d.setParam("gr_manual", 1.f);
+        noisyFinite(proc); // o flanco dispara no 1º bloco; ainda a tocar
+        d.setParam("gr_manual", 0.f);
+        d.pump(120);
+        auto* led = d.granLedFwd();
+        CHECK(led != nullptr && led->getText() == "GRAB!" && led->isHot(), "LED acende no grab");
+        d.setParam("gr_mode", 0.f); // Off: larga e o hold expira
+        noisyFinite(proc);
+        d.pump(600);
+        CHECK(led != nullptr && led->getText() == "IDLE" && ! led->isHot(), "LED apaga após hold");
+        // Repor Free: TIME volta a contar.
+        d.setParam("gr_time_note", 0.f);
+        d.pump(120);
+        CHECK(timeDial != nullptr && std::abs(timeDial->getAlpha() - 1.f) < 0.02f,
+              "TIME acende em Free");
     }
 
     // U9. Preset stepper: setas aplicam mesmo (nomes + valores + wrap).

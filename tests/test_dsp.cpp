@@ -1112,15 +1112,18 @@ int mainGranular()
         renderGrab(g, t, 512, out, ramp);
         g.setManual(false);
         renderGrab(g, t, 6000, out, [](int) { return 0.f; });
-        int trig = 48000 + 512;
+        // Janela na 1ª volta (offsets 200–500: pós-attack, pré-costura).
+        // Evita-se a costura [563, 750]: o crossfade equal-power soma
+        // conteúdo coerente até +3 dB (física do loop, não bug).
+        // Oitavo ≈ [0.989, 0.995].
+        int grab = 48000;
         float mn = 1.f, mx = -1.f;
-        for (int i = trig + 300; i < trig + 700 && i < (int) out.size(); ++i)
+        for (int i = grab + 200; i < grab + 500 && i < (int) out.size(); ++i)
         {
             mn = juce::jmin(mn, out[(size_t) i]);
             mx = juce::jmax(mx, out[(size_t) i]);
         }
-        // Fragmento ≈ [0.87, 1.01); 1º oitavo ≈ [0.87, 0.89).
-        CHECK(mn > 0.8f && mx < 0.92f, "stutter toca o 1º oitavo ([%f, %f])", mn, mx);
+        CHECK(mn > 0.95f && mx < 1.02f, "stutter toca o 1º oitavo ([%f, %f])", mn, mx);
     }
 
     // --- 33. Trigger Envelope: transiente dispara, silêncio não ---
@@ -1176,6 +1179,110 @@ int mainGranular()
             if ((out[(size_t) i - 1] < 0) != (out[(size_t) i] < 0)) ++zc;
         // 220 Hz em 5000 amostras ≈ 22.9 períodos ≈ 46 travessias.
         CHECK(zc > 35 && zc < 58, "pitch −12 desce a oitava (travessias %d)", zc);
+    }
+
+    // --- 35. Slice: chop à taxa do grão (Manual, determinista) ---
+    // DC 1.0 + LEN 1/16: flux 0 (2 fatias) = 1 queda/volta, flux 1 (8) = 4.
+    for (float flux : { 0.f, 1.f })
+    {
+        Granular g;
+        g.prepare(48000.0);
+        g.setMode(Granular::Mode::Slice);
+        g.setTrig(Granular::Trig::Manual);
+        g.setLenNote(TempoInfo::Note::N16); // 6000 amostras @120
+        g.setTimeMs(500.f);
+        g.setFlux(flux);
+        g.setXfadeMs(4.f);
+        g.setMix(1.f);
+        g.setInterrupt(false);
+        g.setInternalBpm(120.0);
+        std::vector<float> out;
+        renderGrab(g, t, 48000, out, [](int) { return 0.5f; });
+        g.setManual(true);
+        renderGrab(g, t, 512, out, [](int) { return 0.5f; });
+        g.setManual(false);
+        renderGrab(g, t, 12000, out, [](int) { return 0.5f; });
+        int trig = 48000 + 512;
+        int falls = 0;
+        float mx = 0.f, mn = 1.f, ms = 0.f;
+        for (int i = trig + 500; i < trig + 6500 && i < (int) out.size(); ++i)
+        {
+            mx = juce::jmax(mx, out[(size_t) i]);
+            mn = juce::jmin(mn, out[(size_t) i]);
+            if (out[(size_t) i - 1] > 0.35f && out[(size_t) i] <= 0.35f) ++falls;
+            ms = juce::jmax(ms, std::abs(out[(size_t) i] - out[(size_t) i - 1]));
+        }
+        int want = (flux == 0.f) ? 1 : 4;
+        CHECK(falls == want, "slice flux %.0f: %d quedas/volta (got %d)", flux, want, falls);
+        CHECK(mx > 0.4f && mn < 0.2f, "slice chop 1.0/0.15 ([%.2f, %.2f])", mn, mx);
+        CHECK(ms < 0.1f, "slice sem cliques (maxStep %f)", ms);
+    }
+
+    // --- 36. Stutter: decay por tempo de fragmento (não por volta) ---
+    // O Stutter dá 8 voltas por fragmento; decair por volta matava-o em
+    // ~200 ms e o TIME ficava decorativo. Razão entre tempos de fragmento
+    // consecutivos ≈ decay (0.85), não 0.85^8.
+    {
+        Granular g;
+        g.prepare(48000.0);
+        g.setMode(Granular::Mode::Stutter);
+        g.setTrig(Granular::Trig::Manual);
+        g.setLenNote(TempoInfo::Note::N16); // 6000; stutter = 750
+        g.setDecay(0.85f);
+        g.setTimeMs(2000.f); // activeLeft longo: mede 2 tempos de fragmento
+        g.setMix(1.f);
+        g.setInterrupt(false);
+        g.setInternalBpm(120.0);
+        std::vector<float> out;
+        renderGrab(g, t, 48000, out, [](int) { return 0.5f; });
+        g.setManual(true);
+        renderGrab(g, t, 512, out, [](int) { return 0.5f; });
+        g.setManual(false);
+        renderGrab(g, t, 20000, out, [](int) { return 0.5f; });
+        int trig = 48000 + 512;
+        auto mabs = [&](int a, int b)
+        {
+            double s = 0.0;
+            int n = 0;
+            for (int i = trig + a; i < trig + b && i < (int) out.size(); ++i)
+            {
+                s += std::abs(out[(size_t) i]);
+                ++n;
+            }
+            return n > 0 ? s / n : 0.0;
+        };
+        double m1 = mabs(500, 6500), m2 = mabs(6500, 12500);
+        double ratio = m2 / (m1 + 1e-9);
+        CHECK(std::abs(ratio - 0.85) < 0.12, "stutter decai por fragmento (razão %f)", ratio);
+    }
+
+    // --- 37. Costura usa o xf do grab (não o stale do bloco) ---
+    // O xf do bloco nasce antes de um grab a meio do bloco; a 1ª volta
+    // usava a costura larga (384 em vez de 187 no Stutter) e somava até
+    // +3 dB fantasma fora da costura real. DC 0.5 tem de sair 0.5 exato.
+    {
+        Granular g;
+        g.prepare(48000.0);
+        g.setMode(Granular::Mode::Stutter);
+        g.setTrig(Granular::Trig::Manual);
+        g.setLenNote(TempoInfo::Note::N16); // stutter = 750 -> xf 187
+        g.setDecay(0.99f); // sem decay na janela (ganho ~1)
+        g.setTimeMs(2000.f);
+        g.setMix(1.f);
+        g.setInterrupt(false);
+        g.setInternalBpm(120.0);
+        std::vector<float> out;
+        renderGrab(g, t, 48000, out, [](int) { return 0.5f; });
+        g.setManual(true);
+        renderGrab(g, t, 512, out, [](int) { return 0.5f; });
+        g.setManual(false);
+        renderGrab(g, t, 6000, out, [](int) { return 0.5f; });
+        int grab = 48000;
+        double m = 0.0;
+        for (int i = grab + 400; i < grab + 500 && i < (int) out.size(); ++i)
+            m += out[(size_t) i];
+        m /= 100.0;
+        CHECK(std::abs(m - 0.5) < 0.02, "sem costura fantasma no grab (média %f)", m);
     }
 
     return failures;

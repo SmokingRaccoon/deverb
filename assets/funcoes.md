@@ -123,15 +123,15 @@ módulo da surpresa; trabalha por último, sobre o som já com espaço.
 
 | Função (UI) | ID (`gr_`/`rev_gr_`) | Tipo / Gama | Default | O que faz |
 |---|---|---|---|---|
-| Modo | `gr_mode` | combo | Off | **Off** (desligado), **BeatRepeat** (repete um fragmento N vezes a decair), **Slice** (fatia em loop cortado), **Reverse** (fragmento ao contrário), **Pitch** (repete mudado de tom), **Stutter** (gagueja rápido o início). |
+| Modo | `gr_mode` | combo | Off | **Off** (desligado), **BeatRepeat** (repete um fragmento N vezes a decair), **Slice** (fatia em loop cortado), **Reverse** (fragmento ao contrário), **Pitch** (repete mudado de tom), **Stutter** (gagueja rápido o oitavo mais recente). |
 | Trigger | `gr_trigger` | combo | Chance | O que dispara: **Chance** (probabilidade), **Envelope** (ataques do som), **Manual** (botão GRAB). |
 | GRAB | `gr_manual` | botão | OFF | Disparo manual (prime para agarrar som). |
 | Fragmento | `gr_len_note` | combo de notas | 1/16 | Tamanho do pedaço agarrado. |
 | CHANCE | `gr_chance` | knob 0–1 | 0.20 | Probabilidade de disparo (modo Chance). |
 | THR | `gr_env_thr` | knob −60–0 dB | −18.0 | Sensibilidade (modo Envelope). |
-| REPEATS | `gr_repeats` | knob 1–16 | 4 | Número de repetições (BeatRepeat/Stutter). |
+| REPEATS | `gr_repeats` | knob 1–16 | 4 | Número de repetições (só BeatRepeat; Stutter/Slice duram o TIME). |
 | DECAY | `gr_decay` | knob 0.5–0.99 | 0.85 | Quanto cada repetição perde de volume. |
-| TIME | `gr_time` / nota | knob 60–8000 ms + combo | 250 / Free | Duração do glitch (modos não-BeatRepeat). |
+| TIME | `gr_time` / nota | knob 60–8000 ms + combo | 250 / Free | Duração do glitch (modos não-BeatRepeat). Com nota, o knob esbate e a caixa mostra o tempo locked (ex.: 1/4 a 120 BPM = 500 ms). |
 | PITCH | `gr_pitch` | knob −12–+12 st | +12 | Tom das repetições (modo Pitch). Interpolação linear = estética lo-fi assumida (sem anti-alias). |
 | FLUX | `gr_flux` | knob 0–1 | 0.30 | Densidade do chop no modo Slice (2–8 fatias; só conta aí). |
 | XFADE | `gr_xfade` | knob 1–50 ms | 8.0 | Crossfade das emendas (anti-cliques). |

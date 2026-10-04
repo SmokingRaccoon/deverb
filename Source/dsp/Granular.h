@@ -11,7 +11,8 @@
 //   Slice:      loop cortado (gate) do fragmento enquanto ativo.
 //   Reverse:    fragmento ao contrário em loop.
 //   Pitch:      loop com rate de semitons (tape-style, pitch+tempo juntos).
-//   Stutter:    repete depressa o 1º oitavo do fragmento, com decay.
+//   Stutter:    repete depressa o oitavo mais recente (últimos ~1/128),
+//               com decay por tempo de fragmento.
 //
 // Triggers: Chance (por fronteira de fragmento, RNG determinística),
 // Envelope (transiente), Manual (flanco). Interrupt troca dry por wet.

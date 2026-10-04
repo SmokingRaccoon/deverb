@@ -230,12 +230,16 @@ void Granular::process(juce::AudioBuffer<float>& buffer, const TempoInfo& tempo)
         float wetL = 0.f, wetR = 0.f;
         if (playing)
         {
+            // xf EFETIVO por amostra: o xf do bloco nasce antes de um
+            // eventual grab a meio do bloco (com loopLen antigo) e a 1ª
+            // volta usaria a costura larga errada (+3 dB fantasma).
+            int xeff = juce::jmax(16, juce::jmin(xf, (int) (loopLen / 4)));
             // Fim: BeatRepeat pelo nº de loops, outros por duração.
             bool finished = (activeLeft <= 0);
             if (finished && releaseLeft <= 0)
             {
-                releaseLeft = xf * 2; // fade de saída
-                relStep = 1.f / (float) (xf * 2);
+                releaseLeft = xeff * 2; // fade de saída
+                relStep = 1.f / (float) (xeff * 2);
             }
             if (releaseLeft > 0)
             {
@@ -245,7 +249,7 @@ void Granular::process(juce::AudioBuffer<float>& buffer, const TempoInfo& tempo)
             }
             else
             {
-                outFade = juce::jmin(1.f, outFade + 1.f / (float) juce::jmax(1, xf / 2));
+                outFade = juce::jmin(1.f, outFade + 1.f / (float) juce::jmax(1, xeff / 2));
                 --activeLeft;
             }
 
@@ -269,13 +273,16 @@ void Granular::process(juce::AudioBuffer<float>& buffer, const TempoInfo& tempo)
             // "volta anterior" absoluta lia história vizinha do anel, que
             // com gravação contínua já não é o fragmento (smear do input
             // ao vivo na costura). FWD mistura fim→começo, REV começo→fim.
+            // Equal-power: em conteúdo coerente (DC/graves) soma até +3 dB
+            // na costura — física do crossfade, não bug (o linear faria
+            // buracos no caso comum de pontas diferentes).
             double rel = playPos - loopStart;
             double distEdge = (playDir > 0) ? (loopEnd - playPos) : (playPos - loopStart);
-            if (distEdge < (double) xf && distEdge >= 0.0)
+            if (distEdge < (double) xeff && distEdge >= 0.0)
             {
-                t = (float) (distEdge / (double) xf);
-                altPos = (playDir > 0) ? (loopStart + rel - loopLen + xf)
-                                       : (loopStart + loopLen - xf + rel);
+                t = (float) (distEdge / (double) xeff);
+                altPos = (playDir > 0) ? (loopStart + rel - loopLen + xeff)
+                                       : (loopStart + loopLen - xeff + rel);
             }
             float wNew = std::sin(t * juce::MathConstants<float>::halfPi);
             float wOld = std::cos(t * juce::MathConstants<float>::halfPi);
@@ -308,13 +315,17 @@ void Granular::process(juce::AudioBuffer<float>& buffer, const TempoInfo& tempo)
             }
 
             // Decay por volta (BeatRepeat e Stutter): o pow() só corre
-            // quando muda o nº de loops (era 1× por amostra).
+            // quando muda o nº de loops (era 1× por amostra). O Stutter dá
+            // 8 voltas por tempo de fragmento (só o 1º oitavo): decair por
+            // volta matava-o em ~200 ms e o TIME ficava decorativo.
+            // Normaliza-se pelo tempo de fragmento (igual ao BeatRepeat).
             if (mode == Mode::BeatRepeat || mode == Mode::Stutter)
             {
                 if (loopsDone != lastDecayLoops)
                 {
                     lastDecayLoops = loopsDone;
-                    cachedDecayGain = std::pow(decay, (float) loopsDone);
+                    double effLoops = (mode == Mode::Stutter) ? loopsDone / 8.0 : loopsDone;
+                    cachedDecayGain = std::pow(decay, (float) effLoops);
                 }
                 wetL *= cachedDecayGain;
                 wetR *= cachedDecayGain;

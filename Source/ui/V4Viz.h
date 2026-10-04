@@ -16,6 +16,8 @@ public:
     V4Viz(Kind k, DeVerbProcessor* proc = nullptr,
           const juce::String& mod = {}, const juce::String& txt = {});
     void setText(const juce::String& t) { if (t != text_) { text_ = t; repaint(); } }
+    juce::String getText() const { return text_; }
+    bool isHot() const { return hot_; }
     void setDark(bool d) { if (d != dark_) { dark_ = d; repaint(); } }
     void setHot(bool h) { if (h != hot_) { hot_ = h; repaint(); } }
     void setAux(int a, int b, int c)
