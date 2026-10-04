@@ -39,6 +39,7 @@ static int mainCivil();
 static int mainPower();
 static int mainIds();
 static int mainPreset();
+static int mainRouting();
 int main()
 {
     const double sr = 48000.0;
@@ -221,6 +222,7 @@ int main()
     mainPower();
     mainIds();
     mainPreset();
+    mainRouting();
 
     if (failures == 0) std::printf("\nALL CHAIN TESTS PASSED\n");
     else std::printf("\n%d FAILURES\n", failures);
@@ -256,6 +258,194 @@ static int mainIds()
     CHECK(missing == 0, "todos os IDs de presets/RANDOM existem (%d em falta)", missing);
     int nParams = p.getParameters().size();
     CHECK(nParams == 122, "122 IDs congelados (got %d)", nParams);
+    return failures;
+}
+
+// --- Lote B: routing — POST, MIDI-throw, orders 1/3, MAN sync ---
+static int mainRouting()
+{
+    const double sr = 48000.0;
+
+    // B1. POST captura a saída do FWD; DRY só o input.
+    // Seno 440 2 s + 1 s silêncio, FWD = granular Pitch (880) sempre a
+    // agarrar (mix cortado aos 2 s para a cauda ser só REV). O anel POST
+    // fica cheio de 880, o DRY só tem o seno 440: na cauda o 880 denuncia.
+    // (Janela [2.05, 2.4 s]: o leitor a 1× alcança sempre a era 880, que
+    // ainda não envelheceu para fora da captura de 2 beats.)
+    auto e880tail = [&](int source)
+    {
+        DeVerbProcessor q;
+        q.prepareToPlay(sr, 512);
+        setF(q, "master", 1.f);
+        setF(q, "fwd_mix", 0.f); // isola: out = dry + REV
+        setF(q, "fwd_gate_mix", 0.f);
+        setF(q, "fwd_delay_mix", 0.f);
+        setF(q, "fwd_verb_mix", 0.f);
+        setI(q, "gr_mode", 4); // Pitch +12
+        setF(q, "gr_chance", 1.f);
+        setF(q, "gr_mix", 1.f);
+        setI(q, "rev_mode", 1); // Loop
+        setI(q, "rev_source", source);
+        setF(q, "rev_mix", 1.f);
+        setF(q, "rev_duck", 0.f);
+        setF(q, "rev_gate_mix", 0.f);
+        setF(q, "rev_delay_mix", 0.f);
+        setF(q, "rev_verb_mix", 0.f);
+        juce::MidiBuffer midi;
+        juce::AudioBuffer<float> b2(2, 512);
+        std::vector<float> out;
+        for (int k = 0; k < 144000 / 512; ++k) // 3 s: 2 s seno + 1 s nada
+        {
+            if (k == 96000 / 512) setF(q, "gr_mix", 0.f); // cala o FWD na cauda
+            for (int i = 0; i < 512; ++i)
+            {
+                float v = (k * 512 + i < 96000)
+                    ? std::sin((k * 512 + i) * 2.f * 3.14159265f * 440.f / 48000.f) * 0.5f : 0.f;
+                b2.setSample(0, i, v);
+                b2.setSample(1, i, v);
+            }
+            q.processBlock(b2, midi);
+            for (int i = 0; i < 512; ++i) out.push_back(b2.getSample(0, i));
+        }
+        double w = 2.0 * 3.14159265358979 * 880.0 / 48000.0;
+        double c = std::cos(w), p0 = 0.0, pp = 0.0;
+        int from = 98400, to = 115200, m = 0;
+        for (int i = from; i < to && i < (int) out.size(); ++i)
+        {
+            double x = out[(size_t) i] + 2.0 * c * p0 - pp;
+            pp = p0;
+            p0 = x;
+            ++m;
+        }
+        return std::sqrt(p0 * p0 + pp * pp - 2.0 * c * p0 * pp) / juce::jmax(1, m);
+    };
+    double eDry = e880tail(0);
+    double ePost = e880tail(1);
+    CHECK(ePost > 0.02 && ePost > eDry * 5.0, "POST contém o FWD (E880 %.2e vs %.2e)", ePost, eDry);
+
+    // B2. MIDI note-on dispara Throw no processador.
+    {
+        DeVerbProcessor q;
+        q.prepareToPlay(sr, 512);
+        setF(q, "master", 1.f);
+        setF(q, "fwd_mix", 0.f);
+        setF(q, "fwd_gate_mix", 0.f);
+        setF(q, "fwd_delay_mix", 0.f);
+        setF(q, "fwd_verb_mix", 0.f);
+        setI(q, "rev_mode", 2); // Throw
+        setF(q, "rev_mix", 1.f);
+        setF(q, "rev_duck", 0.f);
+        setF(q, "rev_gate_mix", 0.f);
+        setF(q, "rev_delay_mix", 0.f);
+        setF(q, "rev_verb_mix", 0.f);
+        juce::MidiBuffer empty, withNote;
+        withNote.addEvent(juce::MidiMessage::noteOn(1, 60, 1.0f), 0);
+        juce::AudioBuffer<float> b2(2, 512);
+        std::vector<float> out;
+        for (int k = 0; k < 96000 / 512; ++k) // 2 s de seno (enche o anel)
+        {
+            for (int i = 0; i < 512; ++i)
+            {
+                float v = std::sin((k * 512 + i) * 0.02f) * 0.5f;
+                b2.setSample(0, i, v);
+                b2.setSample(1, i, v);
+            }
+            // A nota entra no bloco 100 (a seguir, o buffer volta a vazio).
+            q.processBlock(b2, k == 100 ? withNote : empty);
+            for (int i = 0; i < 512; ++i) out.push_back(b2.getSample(0, i));
+        }
+        for (int k = 0; k < 96000 / 512; ++k) // 2 s de silêncio
+        {
+            b2.clear();
+            q.processBlock(b2, empty);
+            for (int i = 0; i < 512; ++i) out.push_back(b2.getSample(0, i));
+        }
+        auto eWin = [&](int from, int to)
+        {
+            double e = 0.0;
+            for (int i = from; i < to && i < (int) out.size(); ++i)
+                e += out[(size_t) i] * out[(size_t) i];
+            return e / (to - from);
+        };
+        int tnote = 100 * 512;
+        double head = eWin(tnote + 4800, tnote + 24000);
+        double tail = eWin(tnote + 72000, tnote + 96000);
+        CHECK(head > 0.005, "MIDI dispara throw (head %.2e)", head);
+        CHECK(tail < head * 0.1, "throw cala-se depois (%.2e < %.2e)", tail, head);
+    }
+
+    // B3. Ordens 1 e 3: estáveis e audíveis.
+    for (int ord : { 1, 3 })
+    {
+        DeVerbProcessor q;
+        q.prepareToPlay(sr, 512);
+        setI(q, "chain_order", ord);
+        setI(q, "x_mode", 1);
+        setI(q, "rev_mode", 1);
+        setF(q, "rev_mix", 0.5f);
+        juce::MidiBuffer midi;
+        juce::AudioBuffer<float> b2(2, 512);
+        float peak = 0.f;
+        bool finite = true;
+        for (int b = 0; b < 300; ++b)
+        {
+            for (int i = 0; i < 512; ++i)
+            {
+                float v = std::sin((b * 512 + i) * 0.02f) * 0.5f;
+                b2.setSample(0, i, v);
+                b2.setSample(1, i, v);
+            }
+            q.processBlock(b2, midi);
+            for (int i = 0; i < 512; ++i)
+            {
+                float v = b2.getSample(0, i);
+                if (! std::isfinite(v)) finite = false;
+                peak = juce::jmax(peak, std::abs(v));
+            }
+        }
+        CHECK(finite && peak < 4.f, "ordem %d + XFADE estável (pico %f)", ord, peak);
+        CHECK(peak > 0.01f, "ordem %d deixa passar som (pico %f)", ord, peak);
+    }
+
+    // B4. MAN sync: o delay 1/8 segue o knob (90 vs 150 BPM).
+    auto echoAt = [&](float bpm)
+    {
+        DeVerbProcessor q;
+        q.prepareToPlay(sr, 512);
+        q.setSyncMode("man");
+        setF(q, "tempo_bpm", bpm);
+        setF(q, "master", 1.f);
+        setF(q, "fwd_mix", 1.f);
+        setF(q, "fwd_gate_mix", 0.f);
+        setI(q, "fwd_delay_note", 6); // 1/8
+        setF(q, "fwd_delay_fb", 0.f); // eco único
+        setF(q, "fwd_delay_mix", 1.f);
+        setF(q, "fwd_verb_mix", 0.f);
+        juce::MidiBuffer midi;
+        juce::AudioBuffer<float> b2(2, 512);
+        std::vector<float> out;
+        for (int k = 0; k < 48000 / 512; ++k)
+        {
+            for (int i = 0; i < 512; ++i)
+            {
+                float v = (k * 512 + i == 0) ? 1.f : 0.f;
+                b2.setSample(0, i, v);
+                b2.setSample(1, i, v);
+            }
+            q.processBlock(b2, midi);
+            for (int i = 0; i < 512; ++i) out.push_back(b2.getSample(0, i));
+        }
+        int best = -1;
+        float bv = 0.f;
+        for (int i = 2000; i < 20000 && i < (int) out.size(); ++i)
+            if (std::abs(out[(size_t) i]) > bv) { bv = std::abs(out[(size_t) i]); best = i; }
+        return best;
+    };
+    // 1/8 = 0.5 beats: @90 -> 0.5*60/90 = 0.333 s = 16000; @150 -> 0.2 s = 9600.
+    int e90 = echoAt(90.f);
+    int e150 = echoAt(150.f);
+    CHECK(std::abs(e90 - 16000) < 300, "MAN 90 BPM: eco 1/8 a 16000 (got %d)", e90);
+    CHECK(std::abs(e150 - 9600) < 300, "MAN 150 BPM: eco 1/8 a 9600 (got %d)", e150);
     return failures;
 }
 
