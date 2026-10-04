@@ -768,6 +768,11 @@ ficheiro.
 - **Glitch com salto temporal**: a gravação pausava a tocar e o grab seguinte
   colava áudio antigo a novo (foto `loopL/R` existia mas ninguém lia dela).
   Grava sempre + foto no grab + costura loop clássica na foto; teste 22.
+- **Verificação total (lotes A–D)**: Slice/Stutter/EnvTrig/Pitch−12, delay
+  freeze infinito, XFADE por beat, POST, MIDI-throw, orders 1/3, MAN sync,
+  RANDOM via tecla, HOST/MAN end-to-end (testes 26–34, U9, C2, routing).
+  Bench §8 no i7 (48k/512): módulos ≤2.8%/core, default 3.2%, extremo 19%
+  (dentro do orçamento). ASan+UBSan limpo nas 3 suites, 0 relatórios.
 
 ## 18. Glossário rápido
 
