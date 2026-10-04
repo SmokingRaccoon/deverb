@@ -599,6 +599,35 @@ int mainDelayAlgos()
         CHECK(peak < 4.f, "wow extremo estável (pico %f)", peak);
     }
 
+    // --- 26. Freeze = loop infinito (contrato da doc) ---
+    // Satura o loop com seno (DC não serve: o blocker da entrada come-o),
+    // congela com silêncio à entrada: sustenta; ao descongelar, decai.
+    {
+        Delay d;
+        d.prepare(48000.0, 512);
+        d.setAlgo(Delay::Algo::Digital);
+        d.setTimeMs(100.f); // 4800 amostras de loop
+        d.setFeedback(0.5f);
+        d.setDampingHz(18000.f);
+        d.setMix(1.f);
+        d.setFrozen(false);
+        auto sine = [](int i) { return std::sin(i * 2.f * 3.14159265f * 220.f / 48000.f) * 0.9f; };
+        auto out = renderDelay(d, 48000, sine); // 1 s a saturar
+        (void) out;
+        d.setFrozen(true);
+        auto frz = renderDelay(d, 24000, [](int) { return 0.f; });
+        double eFrz = 0.0;
+        for (int i = 12000; i < 24000; ++i) eFrz += frz[(size_t) i] * frz[(size_t) i];
+        eFrz = std::sqrt(eFrz / 12000.0);
+        d.setFrozen(false);
+        auto rel = renderDelay(d, 48000, [](int) { return 0.f; });
+        double eRel = 0.0;
+        for (int i = 36000; i < 48000; ++i) eRel += rel[(size_t) i] * rel[(size_t) i];
+        eRel = std::sqrt(eRel / 12000.0);
+        CHECK(eFrz > 0.3, "freeze sustenta o loop (rms %f)", eFrz);
+        CHECK(eRel < eFrz * 0.05, "unfreeze liberta e decai (%f < %f)", eRel, eFrz);
+    }
+
     return failures;
 }
 
@@ -1011,6 +1040,142 @@ int mainGranular()
         m /= juce::jmax(1, mm);
         // Novo ≈ -0.125 (metade silêncio, metade B); velho ≈ 0.0 (A+B).
         CHECK(m < -0.05, "grab sem salto temporal (média %f)", m);
+    }
+
+    // --- 31. Slice: chop à taxa do grão, sem cliques ---
+    // DC 1.0 + flux 0 (2 fatias): 1ª metade ≈1, 2ª ≈0.15; flux 1 (8
+    // fatias): 4 quedas por volta em vez de 1.
+    {
+        auto sliceRun = [&](float flux)
+        {
+            Granular g;
+            g.prepare(48000.0);
+            g.setMode(Granular::Mode::Slice);
+            g.setTrig(Granular::Trig::Manual);
+            g.setLenNote(TempoInfo::Note::N16); // 6000 amostras @120
+            g.setFlux(flux);
+            g.setXfadeMs(4.f);
+            g.setMix(1.f);
+            g.setInterrupt(false);
+            g.setInternalBpm(120.0);
+            std::vector<float> out;
+            renderGrab(g, t, 48000, out, [](int) { return 1.0f; });
+            g.setManual(true);
+            renderGrab(g, t, 512, out, [](int) { return 1.0f; });
+            g.setManual(false);
+            renderGrab(g, t, 12000, out, [](int) { return 1.0f; });
+            return out;
+        };
+        auto falls = [](const std::vector<float>& o, int from, int to)
+        {
+            int c = 0;
+            for (int i = from + 1; i < to && i < (int) o.size(); ++i)
+                if (o[(size_t) i - 1] > 0.6f && o[(size_t) i] <= 0.6f) ++c;
+            return c;
+        };
+        auto means = [](const std::vector<float>& o, int from, int to)
+        {
+            double s = 0.0;
+            int n = 0;
+            for (int i = from; i < to && i < (int) o.size(); ++i) { s += o[(size_t) i]; ++n; }
+            return n > 0 ? s / n : 0.0;
+        };
+        std::vector<float> o2 = sliceRun(0.f);
+        int trig = 48000 + 512;
+        double hi = means(o2, trig + 500, trig + 2500);
+        double lo = means(o2, trig + 3500, trig + 5500);
+        CHECK(hi > 0.8, "slice metade alta passa (média %f)", hi);
+        CHECK(lo < 0.3, "slice metade baixa corta (média %f)", lo);
+        CHECK(falls(o2, trig + 500, trig + 6500) == 1, "flux 0 = 1 queda/volta");
+        std::vector<float> o8 = sliceRun(1.f);
+        CHECK(falls(o8, trig + 500, trig + 6500) == 4, "flux 1 = 4 quedas/volta");
+        float ms = 0.f;
+        for (int i = trig + 500; i < trig + 11500 && i < (int) o2.size(); ++i)
+            ms = juce::jmax(ms, std::abs(o2[(size_t) i] - o2[(size_t) i - 1]));
+        CHECK(ms < 0.1f, "chop suavizado sem cliques (maxStep %f)", ms);
+    }
+
+    // --- 32. Stutter: só o 1º oitavo do fragmento ---
+    {
+        Granular g;
+        g.prepare(48000.0);
+        g.setMode(Granular::Mode::Stutter);
+        g.setTrig(Granular::Trig::Manual);
+        g.setLenNote(TempoInfo::Note::N16); // 6000; stutter = 750
+        g.setMix(1.f);
+        g.setInterrupt(false);
+        g.setInternalBpm(120.0);
+        std::vector<float> out;
+        auto ramp = [](int i) { return (float) i / 48000.f; }; // sem wrap
+        renderGrab(g, t, 48000, out, ramp);
+        g.setManual(true);
+        renderGrab(g, t, 512, out, ramp);
+        g.setManual(false);
+        renderGrab(g, t, 6000, out, [](int) { return 0.f; });
+        int trig = 48000 + 512;
+        float mn = 1.f, mx = -1.f;
+        for (int i = trig + 300; i < trig + 700 && i < (int) out.size(); ++i)
+        {
+            mn = juce::jmin(mn, out[(size_t) i]);
+            mx = juce::jmax(mx, out[(size_t) i]);
+        }
+        // Fragmento ≈ [0.87, 1.01); 1º oitavo ≈ [0.87, 0.89).
+        CHECK(mn > 0.8f && mx < 0.92f, "stutter toca o 1º oitavo ([%f, %f])", mn, mx);
+    }
+
+    // --- 33. Trigger Envelope: transiente dispara, silêncio não ---
+    // (O transiente cai sempre no fim do fragmento = zona da costura, por
+    // isso mede-se disparo + energia capturada, não pico: o xfade atenua
+    // o fim por desenho.)
+    {
+        Granular g;
+        g.prepare(48000.0);
+        g.setMode(Granular::Mode::BeatRepeat);
+        g.setTrig(Granular::Trig::Envelope);
+        g.setEnvThrDb(-18.f);
+        g.setLenNote(TempoInfo::Note::N16);
+        g.setRepeats(1);
+        g.setMix(1.f);
+        g.setInterrupt(false);
+        g.setInternalBpm(120.0);
+        std::vector<float> out;
+        renderGrab(g, t, 20000, out, [](int) { return 0.f; });
+        CHECK(! g.isActive(), "silêncio não dispara envelope");
+        auto burst = [](int i) { return (i >= 20000 && i < 20100) ? 1.f : 0.f; };
+        renderGrab(g, t, 512, out, burst);
+        CHECK(g.isActive(), "transiente dispara envelope no próprio bloco");
+        renderGrab(g, t, 12000, out, [](int) { return 0.f; });
+        double e = 0.0;
+        for (int i = 20512; i < 20512 + 6000 && i < (int) out.size(); ++i)
+            e += out[(size_t) i] * out[(size_t) i];
+        CHECK(e > 0.001, "conteúdo do transiente é capturado (energia %f)", e);
+    }
+
+    // --- 34. Pitch −12 = rate 0.5× (440 Hz → 220 Hz) ---
+    {
+        Granular g;
+        g.prepare(48000.0);
+        g.setMode(Granular::Mode::Pitch);
+        g.setTrig(Granular::Trig::Manual);
+        g.setLenNote(TempoInfo::Note::N16);
+        g.setPitchSt(-12.f);
+        g.setXfadeMs(4.f);
+        g.setMix(1.f);
+        g.setInterrupt(true);
+        g.setInternalBpm(120.0);
+        std::vector<float> out;
+        auto sine = [](int i) { return std::sin(i * 2.0f * 3.14159265f * 440.f / 48000.f); };
+        renderGrab(g, t, 7000, out, sine);
+        g.setManual(true);
+        renderGrab(g, t, 512, out, sine);
+        g.setManual(false);
+        renderGrab(g, t, 12000, out, [](int) { return 0.f; });
+        int trig = 7000;
+        int zc = 0;
+        for (int i = trig + 501; i < trig + 5500 && i < (int) out.size(); ++i)
+            if ((out[(size_t) i - 1] < 0) != (out[(size_t) i] < 0)) ++zc;
+        // 220 Hz em 5000 amostras ≈ 22.9 períodos ≈ 46 travessias.
+        CHECK(zc > 35 && zc < 58, "pitch −12 desce a oitava (travessias %d)", zc);
     }
 
     return failures;

@@ -500,6 +500,7 @@ static int mainCivil()
 // Deteta NaN/Inf/picos absurdos e imprime a combinação culpada.
 static int mainFuzz()
 {
+    int before = failures; // o global já pode trazer falhas de fases anteriores
     juce::Random rng(0xF422);
     const double srs[3] = { 44100.0, 48000.0, 96000.0 };
     const int blks[2] = { 64, 1024 };
@@ -554,7 +555,7 @@ static int mainFuzz()
             }
         }
     }
-    CHECK(failures == 0, "fuzz próprio: 3600 blocos sem NaN/Inf/picos");
+    CHECK(failures == before, "fuzz próprio: 3600 blocos sem NaN/Inf/picos");
     return failures;
 }
 
@@ -590,5 +591,77 @@ static int mainOrder()
     }
     CHECK(finite && peak < 4.f, "ordem D-G-V-Gr + XFADE estável (pico %f)", peak);
     CHECK(peak > 0.01f, "XFADE deixa passar som (pico %f)", peak);
+
+    // --- XFADE alterna mesmo: pares FWD (gran Pitch = 880), ímpares dry+REV ---
+    // FWD = granular Pitch+12 contínuo (880) com mix 1: nos pares o dry some
+    // ((1-gF) = 0) e só há 880; nos ímpares o FWD cala-se (sem 880) e passam
+    // dry 440 + REV Loop a 0.5× (220). Três assinaturas independentes.
+    {
+        DeVerbProcessor q;
+        q.prepareToPlay(sr, 512);
+        setF(q, "master", 1.f);
+        setF(q, "fwd_mix", 1.f);
+        setF(q, "fwd_gate_mix", 0.f);
+        setF(q, "fwd_delay_mix", 0.f);
+        setF(q, "fwd_verb_mix", 0.f);
+        setI(q, "gr_mode", 4); // Pitch
+        setF(q, "gr_chance", 1.f);
+        setF(q, "gr_mix", 1.f);
+        setB(q, "link_gran", false); // senão o REV seguia o Pitch e o 220 sumia
+        setI(q, "x_mode", 1);
+        setI(q, "rev_mode", 1); // Loop
+        setF(q, "rev_rate", 0.5f);
+        setF(q, "rev_mix", 1.f);
+        setF(q, "rev_duck", 0.f);
+        setF(q, "rev_gate_mix", 0.f);
+        setF(q, "rev_delay_mix", 0.f);
+        setF(q, "rev_verb_mix", 0.f);
+        std::vector<float> out;
+        juce::AudioBuffer<float> b2(2, 512);
+        const int beats = 10, beatLen = 24000; // 0.5 s @120
+        for (int k = 0; k < beats * beatLen / 512; ++k)
+        {
+            for (int i = 0; i < 512; ++i)
+            {
+                float v = std::sin((k * 512 + i) * 2.f * 3.14159265f * 440.f / 48000.f) * 0.5f;
+                b2.setSample(0, i, v);
+                b2.setSample(1, i, v);
+            }
+            q.processBlock(b2, midi);
+            for (int i = 0; i < 512; ++i) out.push_back(b2.getSample(0, i));
+        }
+        auto goertzel = [&](int from, int to, double target)
+        {
+            double w = 2.0 * 3.14159265358979 * target / 48000.0;
+            double c = std::cos(w), p0 = 0.0, pp = 0.0;
+            for (int i = from; i < to; ++i)
+            {
+                double x = out[(size_t) i] + 2.0 * c * p0 - pp;
+                pp = p0;
+                p0 = x;
+            }
+            int m = to - from;
+            return std::sqrt(p0 * p0 + pp * pp - 2.0 * c * p0 * pp) / m;
+        };
+        bool altOk = true;
+        for (int k = 4; k < 9; ++k) // salta settle (REV + granular)
+        {
+            int from = k * beatLen + 4800, to = k * beatLen + 19200;
+            double e220 = goertzel(from, to, 220.0);
+            double e440 = goertzel(from, to, 440.0);
+            double e880 = goertzel(from, to, 880.0);
+            std::printf("  beat %d (%s): E220 %.3f E440 %.3f E880 %.3f\n",
+                        k, (k % 2 == 0) ? "par" : "ímpar", e220, e440, e880);
+            bool ok;
+            if (k % 2 == 0) // par: só FWD (880 domina, dry+REV mudos)
+                ok = (e880 > e440 * 2.0) && (e880 > e220 * 2.0);
+            else // ímpar: FWD mudo (sem 880), dry 440 + REV 220 audíveis.
+                 // (O 220 varia com os reanchors do leitor a 0.5×: limiar
+                 // folgado; o par-220-baixo + ímpar-220-presente prova o xfRev.)
+                ok = (e880 < 0.05) && (e440 > 0.1) && (e220 > 0.03);
+            if (! ok) altOk = false;
+        }
+        CHECK(altOk, "XFADE alterna FWD/REV por beat");
+    }
     return failures;
 }

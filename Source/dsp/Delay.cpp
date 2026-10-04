@@ -152,9 +152,13 @@ void Delay::process(juce::AudioBuffer<float>& buffer)
         const float d = (testDelaySamples >= 0)
                       ? (float) testDelaySamples
                       : smoothDelay.getNextValue();
-        const float fb = smoothFb.getNextValue();
+        // Freeze = loop infinito (contrato da doc): feedback força a 1
+        // enquanto congela; a troca é de taxa de decaimento, não de
+        // amplitude, por isso não clica (o smoothFb continua a rampar).
+        const float frzPre = smoothFreeze.getNextValue(); // 0 normal, 1 frozen
+        const float fb = (frzPre > 0.5f) ? 1.f : smoothFb.getNextValue();
         const float mix = smoothMix.getNextValue();
-        const float frz = smoothFreeze.getNextValue(); // 0 normal, 1 frozen
+        const float frz = frzPre;
         const float drv = smoothDrive.getNextValue();
         const float spread = smoothSpread.getNextValue();
         float fade = smoothFade.getNextValue();
