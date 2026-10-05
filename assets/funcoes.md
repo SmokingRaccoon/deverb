@@ -34,7 +34,11 @@ ao vivo.
 | G-D-V-G / Add | `chain_order` / `x_mode` | combos | G-D-V-G / Add | Ordem da cadeia e modo de mistura (ver §8 Routing). |
 
 **Limiter de segurança:** sempre ligado no master, teto -1 dBFS. Podes puxar
-tudo sem medo de estourar as colunas.
+tudo sem medo de estourar as colunas. A caixinha `GR` ao lado mostra a
+redução em dB (0 = limpo); se viveres acima de −6 dB, baixa o MASTER ou
+os mixes — o limiter protege, mas comprime.
+**Mudanças bulk** (presets, RANDOM, restore) fazem fade de 40 ms para não
+estalarem.
 
 ---
 

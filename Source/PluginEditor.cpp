@@ -71,6 +71,7 @@ DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
         ui.setProperty("lastPreset", i, nullptr);
         if (presetStepper != nullptr)
             presetStepper->setExternalIndex(i);
+        proc.blipFade(); // 122 params de uma vez: sem fade estalava
     };
     addAndMakeVisible(ps); owned_.add(ps); presetStepper = ps;
 
@@ -128,6 +129,11 @@ DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
     dimMixAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         proc.apvts, "dim_mix", *dimMixDial);
     dimMixDial->fixDoubleClick();
+
+    grViz = new V4Viz(V4Viz::DelayMs, &proc);
+    grViz->setBounds(164, 186, 72, 14);
+    grViz->setTooltip("Redução de ganho do limiter (dB)");
+    addAndMakeVisible(grViz); owned_.add(grViz);
 
     auto* er = new V4Viz(V4Viz::EngineRev, &proc);
     er->setBounds(24, 406, 112, 28);
@@ -472,6 +478,7 @@ void DeVerbEditor::randomize()
     ui.setProperty("lastPreset", -1, nullptr);
     if (presetStepper != nullptr)
         presetStepper->setExternalIndex(-1);
+    proc.blipFade(); // ~120 params de uma vez: sem fade estalava
 }
 
 juce::Slider* DeVerbEditor::findDial(const juce::String& paramId)
@@ -562,6 +569,9 @@ void DeVerbEditor::timerCallback()
         morphReadViz->setText(juce::String((int)std::round(getParamFloat(proc.apvts, "morph") * 100)) + "%");
     if (scopeViz) scopeViz->repaint();
     if (captureViz) captureViz->repaint();
+    // GR do limiter (setText tem guard: só repinta ao mudar).
+    if (grViz)
+        grViz->setText("GR " + juce::String(proc.getGrDb(), 1));
     if (ripples && ripples->active()) { ripples->repaint(); ripples->gc(); }
 
     if (toast && toast->isVisible() && juce::Time::getMillisecondCounter() > toastHideAt)

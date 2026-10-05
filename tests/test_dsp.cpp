@@ -816,6 +816,130 @@ int mainDelayAlgos()
         CHECK(live < 0.05, "sem freeze o anel esvazia (rms %f)", live);
     }
 
+    // --- G43b. Multitap com fb 0.95 não explode (feedback normalizado) ---
+    // A soma dos taps (2.55×) com fb alto fugia exponencialmente em
+    // conteúdo coerente (graves). Senóide 55 Hz durante 6 s.
+    {
+        Delay d;
+        d.prepare(48000.0, 512);
+        d.setAlgo(Delay::Algo::Multitap);
+        d.setTimeMs(375.f);
+        d.setFeedback(0.95f);
+        d.setDampingHz(18000.f);
+        d.setMix(1.f);
+        d.setFrozen(false);
+        auto sub = [](int i) {
+            return std::sin(i * 2.f * 3.14159265f * 55.f / 48000.f) * 0.5f;
+        };
+        auto out = renderDelay(d, 288000, sub);
+        float peak = 0.f;
+        for (float v : out)
+        {
+            if (! std::isfinite(v)) { peak = 1e9f; break; }
+            peak = juce::jmax(peak, std::abs(v));
+        }
+        CHECK(peak < 4.f, "multitap fb 0.95 estável (pico %f)", peak);
+    }
+
+    // --- G43c. Níveis consistentes entre algoritmos (broadband ±3 dB) ---
+    // Ruído branco: room/hall/plate/shimmer e digital/pingpong/multitap
+    // têm de cair todos dentro de 2× (o ouvido notava 12 dB de salto).
+    {
+        juce::Random rng(99);
+        auto noise = [&](int i)
+        {
+            (void) i;
+            return (rng.nextFloat() * 2.f - 1.f) * 0.3f;
+        };
+        auto verbLevel = [&](reverb::Reverb::Algo a)
+        {
+            reverb::Reverb r;
+            r.prepare(48000.0, 512);
+            r.setAlgo(a);
+            r.noteStructuralChange(true);
+            r.setSize01(0.5f);
+            r.setT60(2.5);
+            r.setDamp01(0.3f);
+            r.setWidth01(1.f);
+            r.setPredelaySamples(0);
+            r.setFrozen(false);
+            r.setMix(1.f);
+            r.setTone(80.f, 12000.f);
+            juce::AudioBuffer<float> blk(2, 512);
+            double e = 0.0;
+            int nn = 0, pos = 0;
+            while (pos < 96000)
+            {
+                int n = juce::jmin(512, 96000 - pos);
+                blk.setSize(2, n, false, false, true);
+                for (int i = 0; i < n; ++i)
+                {
+                    float v = noise(pos + i);
+                    blk.setSample(0, i, v);
+                    blk.setSample(1, i, v);
+                }
+                r.process(blk);
+                if (pos >= 48000)
+                    for (int i = 0; i < n; ++i)
+                    {
+                        e += blk.getSample(0, i) * blk.getSample(0, i);
+                        ++nn;
+                    }
+                pos += n;
+            }
+            return std::sqrt(e / nn);
+        };
+        double room = verbLevel(reverb::Reverb::Algo::Room);
+        double hall = verbLevel(reverb::Reverb::Algo::Hall);
+        double plate = verbLevel(reverb::Reverb::Algo::Plate);
+        double shim = verbLevel(reverb::Reverb::Algo::Shimmer);
+        double mn = juce::jmin(juce::jmin(room, hall), juce::jmin(plate, shim));
+        double mx = juce::jmax(juce::jmax(room, hall), juce::jmax(plate, shim));
+        CHECK(mx < mn * 2.0, "verbs nivelados (%.3f..%.3f)", mn, mx);
+        auto delayLevel = [&](Delay::Algo a)
+        {
+            Delay d;
+            d.prepare(48000.0, 512);
+            d.setAlgo(a);
+            d.setTimeMs(375.f);
+            d.setFeedback(0.5f);
+            d.setDampingHz(6000.f);
+            d.setMix(1.f);
+            d.setDrive(0.3f);
+            d.setSpread(1.f);
+            juce::AudioBuffer<float> blk(2, 512);
+            double e = 0.0;
+            int nn = 0, pos = 0;
+            while (pos < 96000)
+            {
+                int n = juce::jmin(512, 96000 - pos);
+                blk.setSize(2, n, false, false, true);
+                for (int i = 0; i < n; ++i)
+                {
+                    float v = noise(pos + i);
+                    blk.setSample(0, i, v);
+                    blk.setSample(1, i, v);
+                }
+                d.process(blk);
+                if (pos >= 48000)
+                    for (int i = 0; i < n; ++i)
+                    {
+                        e += blk.getSample(0, i) * blk.getSample(0, i);
+                        ++nn;
+                    }
+                pos += n;
+            }
+            return std::sqrt(e / nn);
+        };
+        double dig = delayLevel(Delay::Algo::Digital);
+        double tp = delayLevel(Delay::Algo::Tape);
+        double pp = delayLevel(Delay::Algo::PingPong);
+        double mt = delayLevel(Delay::Algo::Multitap);
+        double dmn = juce::jmin(juce::jmin(dig, tp), juce::jmin(pp, mt));
+        double dmx = juce::jmax(juce::jmax(dig, tp), juce::jmax(pp, mt));
+        CHECK(dmx < dmn * 2.0, "delays nivelados (%.3f..%.3f)", dmn, dmx);
+    }
+
     // --- G44. Damping escurece por repetição (não o eco direto) ---
     // O damping vive no loop: o 1º eco sai intacto, o 2º sai domado.
     {

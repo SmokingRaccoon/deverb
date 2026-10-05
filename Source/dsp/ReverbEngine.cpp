@@ -343,8 +343,11 @@ void ShimmerVoice::processSample(float inL, float inR, float& outL, float& outR)
     shimState += shimA * (shimHp - shimState);
 
     fdn.processSample(inL + shimState * shimmerAmt, inR + shimState * shimmerAmt, outL, outR);
-    ring[(size_t) w] = (outL + outR) * 0.5f;
+    ring[(size_t) w] = (outL + outR) * 0.5f; // pré-trim: o loop não vê o ganho
     if (++w >= cap) w = 0;
+    // Nivelamento FDN (ver Hall): o FDN sai ~10 dB abaixo do Room/Plate.
+    outL *= 3.f;
+    outR *= 3.f;
 }
 
 // ---------------- Wrapper ----------------
@@ -590,7 +593,10 @@ void Reverb::process(juce::AudioBuffer<float>& buffer)
         switch (algo)
         {
             case Algo::Room:    freeverb.processSample(dL, dR, wL, wR); break;
-            case Algo::Hall:    fdn.processSample(dL, dR, wL, wR); break;
+            // Nivelamento FDN: sai ~10 dB abaixo do Room/Plate (medido com
+            // ruído e bateria); ×3 põe todos a ±2 dB. Pós-loop: sem efeito
+            // na estabilidade (ver ShimmerVoice: o anel não vê o trim).
+            case Algo::Hall:    fdn.processSample(dL, dR, wL, wR); wL *= 3.f; wR *= 3.f; break;
             case Algo::Plate:   plate.processSample(dL, dR, wL, wR); break;
             case Algo::Shimmer: shimmer.processSample(dL, dR, wL, wR); break;
         }

@@ -43,7 +43,11 @@ public:
     juce::AudioProcessorValueTreeState apvts;
     static juce::AudioProcessorValueTreeState::ParameterLayout createParams();
 
+    // Fade anti-clique em mudanças bulk (presets/RANDOM/undo): a UI e o
+    // restore chamam; o áudio faz dip 20 ms + volta 20 ms. Lock-free.
+    void blipFade() { bulkFadeReq.store(true); }
     // Leitura p/ UI (Timer): passo atual do gate e BPM efetivo.
+    float getGrDb() const { return grDbUi.load(); } // <= 0 (redução do limiter)
     int getGateStep() const { return gateStepUi.load(); }
     int getRevGateStep() const { return revGateStepUi.load(); }
     float getUiBpm() const  { return bpmUi.load(); }
@@ -106,5 +110,13 @@ private:
     // MORPH + trims suavizados (50 ms): sem eles a cadeia REV fazia zipper
     // ao rodar o knob herói (os módulos só suavizam o lado FWD).
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothMorph, smoothTrimDly, smoothTrimDec;
+    // Fade bulk: 0 = normal, 1 = a descer, 2 = a subir (só no audio thread;
+    // o pedido chega por atómico da message thread).
+    std::atomic<bool> bulkFadeReq { false };
+    int bulkPhase = 0;
+    float bulkGain = 1.f;
+    float bulkStepLive = 1.f / (0.02f * 44100.f); // 20 ms, recalibrado no prepare
+    std::atomic<float> grDbUi { 0.f };
+    float grHold = 0.f; // pico de redução (linear) com release, no audio thread
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DeVerbProcessor)
 };

@@ -53,6 +53,9 @@ private:
     static constexpr float maxDelaySec = 2.3f;
     static constexpr float tapFrac[4] = { 1.f, 0.75f, 0.5f, 0.25f };
     static constexpr float tapGain[4] = { 1.f, 0.7f, 0.5f, 0.35f };
+    // Soma dos taps (feedback + nível): sem normalizar, o loop ganhava
+    // 2.55×fb e explodia com fb > 0.39 em conteúdo coerente (graves/DC).
+    static constexpr float tapSum = 2.55f;
 
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Lagrange3rd> line;
     double sampleRate = 44100.0;

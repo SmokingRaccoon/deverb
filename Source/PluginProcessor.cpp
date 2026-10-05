@@ -353,6 +353,11 @@ void DeVerbProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     smoothFwdMix.reset(sampleRate, 0.03);
     smoothFwdMix.setCurrentAndTargetValue(apvts.getRawParameterValue("fwd_mix")->load());
     limPeak = 0.f;
+    bulkPhase = 0;
+    bulkGain = 1.f;
+    bulkStepLive = 1.f / (0.02f * (float) sampleRate);
+    grHold = 0.f;
+    grDbUi.store(0.f);
     dspSr = sampleRate;
     limRelCoef = std::exp(-1.f / (0.05f * (float) sampleRate));
     scopeFifo.reset();
@@ -783,9 +788,23 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
                                fwdBuf.getNumChannels() > 1 ? fwdBuf.getReadPointer(1) : nullptr };
     const float* revPtr[2] = { (revMode != 0) ? revBuf.getReadPointer(0) : nullptr,
                                (revMode != 0 && revBuf.getNumChannels() > 1) ? revBuf.getReadPointer(1) : nullptr };
+    if (bulkFadeReq.exchange(false))
+    {
+        bulkPhase = 1; // começa a descer; a 0 volta a subir sozinho
+    }
     for (int i = 0; i < n; ++i)
     {
-        const float gM = smoothMaster.getNextValue();
+        if (bulkPhase == 1)
+        {
+            bulkGain = juce::jmax(0.f, bulkGain - bulkStepLive);
+            if (bulkGain <= 0.f) bulkPhase = 2;
+        }
+        else if (bulkPhase == 2)
+        {
+            bulkGain = juce::jmin(1.f, bulkGain + bulkStepLive);
+            if (bulkGain >= 1.f) bulkPhase = 0;
+        }
+        const float gM = smoothMaster.getNextValue() * bulkGain;
         const float gF = xfFwd.getNextValue() * smoothFwdMix.getNextValue();
         const float gR = xfRev.getNextValue() * smoothRevMix.getNextValue();
         for (int ch = 0; ch < nCh; ++ch)
@@ -811,15 +830,21 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     // ganho comum aos 2 canais. Só atua acima de -1 dBFS.
     const float limCeil = 0.891251f; // -1 dBFS
     const float limRel = limRelCoef;
+    float blockMin = 1.f;
     for (int i = 0; i < n; ++i)
     {
         float peak = juce::jmax(std::abs(outPtr[0][i]), nCh > 1 ? std::abs(outPtr[1][i]) : 0.f);
         limPeak = (peak > limPeak) ? peak : limPeak * limRel;
         float gL = (limPeak > limCeil) ? limCeil / limPeak : 1.f;
+        if (gL < blockMin) blockMin = gL;
         outPtr[0][i] *= gL;
         if (nCh > 1)
             outPtr[1][i] *= gL;
     }
+    // GR para a UI: pico do bloco com release (~1.5 s), em dB. Sem
+    // limitagem, volta a 0 sozinho.
+    grHold = juce::jmax(grHold * 0.98f, 1.f - blockMin);
+    grDbUi.store(grHold > 0.001f ? 20.f * std::log10(1.f - grHold) : 0.f);
 }
 
 void DeVerbProcessor::getScopeSnapshot(float* dst, int n)
@@ -901,6 +926,8 @@ void DeVerbProcessor::setStateInformation(const void* data, int sizeInBytes)
             auto ui = apvts.state.getChildWithName("v4ui");
             syncPolicyUi.store(ui.isValid()
                 && ui.getProperty("syncMode", "host").toString() == "man" ? 1 : 0);
+            // Restore bulk (122 params de uma vez): fade anti-clique.
+            blipFade();
         }
 }
 

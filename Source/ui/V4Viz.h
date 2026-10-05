@@ -6,7 +6,8 @@ class DeVerbProcessor;
 // Visuais v4 (.viz.*): só leitura. Alguns precisam de dados do DSP
 // (scope FIFO, capture-window) — o editor chama update() no Timer e repaint.
 // Os desenhados a partir de params (taps/decay/shards) leem APVTS direto.
-class V4Viz : public juce::Component
+class V4Viz : public juce::Component,
+                  public juce::SettableTooltipClient
 {
 public:
     enum Kind { Title, EngineFwd, EngineRev, Scope, CaptureWin, Ruler, GateBig,

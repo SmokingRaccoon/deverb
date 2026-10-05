@@ -74,6 +74,7 @@ private:
     V4Dial* dimSizeDial = nullptr;
     V4Dial* dimMixDial = nullptr;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> dimSizeAtt, dimMixAtt;
+    V4Viz* grViz = nullptr; // readout da redução do limiter (dB)
     V4Viz* engineRevViz = nullptr;
     V4Seg* revModeSeg = nullptr;
     V4Seg* revSourceSeg = nullptr;

@@ -328,6 +328,81 @@ static int mainOut()
         }
         CHECK(peak <= 0.90f, "limiter trava com widener (pico %f)", peak);
     }
+    // GR do limiter: quente marca, calmo volta a 0.
+    {
+        DeVerbProcessor p;
+        p.prepareToPlay(sr, 512);
+        setF(p, "master", 1.f);
+        setF(p, "input_gain", 2.f);
+        setF(p, "fwd_verb_mix", 1.f);
+        juce::MidiBuffer mm;
+        juce::AudioBuffer<float> buf(2, 512);
+        for (int b = 0; b < 200; ++b)
+        {
+            for (int i = 0; i < 512; ++i)
+            {
+                float v = std::sin((b * 512 + i) * 0.05f) * 0.9f;
+                buf.setSample(0, i, v);
+                buf.setSample(1, i, v);
+            }
+            p.processBlock(buf, mm);
+        }
+        float hot = p.getGrDb();
+        CHECK(hot < -0.5f, "GR marca com pico quente (%f dB)", hot);
+        setF(p, "input_gain", 0.05f);
+        for (int b = 0; b < 500; ++b)
+        {
+            for (int i = 0; i < 512; ++i)
+            {
+                float v = std::sin((b * 512 + i) * 0.05f) * 0.9f;
+                buf.setSample(0, i, v);
+                buf.setSample(1, i, v);
+            }
+            p.processBlock(buf, mm);
+        }
+        CHECK(p.getGrDb() == 0.f, "GR volta a 0 no calmo");
+    }
+    // Restore bulk faz fade (dip + recuperação, sem clique).
+    {
+        DeVerbProcessor p;
+        p.prepareToPlay(sr, 512);
+        setF(p, "master", 1.f);
+        setF(p, "fwd_mix", 1.f);
+        setF(p, "fwd_delay_mix", 0.5f);
+        applyFactoryPreset(p.apvts, 8); // Dub Echo (estado B)
+        juce::MemoryBlock mb;
+        p.getStateInformation(mb);
+        applyFactoryPreset(p.apvts, 0); // Init (estado A, de partida)
+        juce::MidiBuffer mm;
+        juce::AudioBuffer<float> buf(2, 512);
+        auto feedSine = [&](int k)
+        {
+            for (int i = 0; i < 512; ++i)
+            {
+                float v = std::sin((k * 512 + i) * 0.02f) * 0.5f;
+                buf.setSample(0, i, v);
+                buf.setSample(1, i, v);
+            }
+        };
+        for (int k = 0; k < 100; ++k) { feedSine(k); p.processBlock(buf, mm); }
+        double steady = 0.0;
+        for (int i = 0; i < 512; ++i) steady += buf.getSample(0, i) * buf.getSample(0, i);
+        steady = std::sqrt(steady / 512.0);
+        p.setStateInformation(mb.getData(), (int) mb.getSize()); // bulk!
+        double mindip = 1e9, recov = 0.0;
+        for (int k = 0; k < 200; ++k)
+        {
+            feedSine(100 + k);
+            p.processBlock(buf, mm);
+            double e = 0.0;
+            for (int i = 0; i < 512; ++i) e += buf.getSample(0, i) * buf.getSample(0, i);
+            e = std::sqrt(e / 512.0);
+            if (k < 50 && e < mindip) mindip = e;
+            if (k >= 150 && e > recov) recov = e;
+        }
+        CHECK(mindip < steady * 0.5, "restore faz dip (%.3f < %.3f)", mindip, steady);
+        CHECK(recov > 0.05, "recupera após o fade (%.3f)", recov);
+    }
     return failures;
 }
 

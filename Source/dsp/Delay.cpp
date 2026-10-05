@@ -233,10 +233,11 @@ void Delay::process(juce::AudioBuffer<float>& buffer)
                 wetR = wetL;
             dampStateL += a * (wetL - dampStateL);
             dampStateR += a * (wetR - dampStateR);
-            // Feedback da soma dos taps com damping (denso e escuro).
-            line.pushSample(0, xL * (1.f - frz) + dampStateL * fb);
+            // Feedback da soma dos taps com damping (denso e escuro),
+            // normalizado pela soma (loop <= fb, estável até fb 0.95).
+            line.pushSample(0, xL * (1.f - frz) + dampStateL * fb / tapSum);
             if (nCh > 1)
-                line.pushSample(1, xR * (1.f - frz) + dampStateR * fb);
+                line.pushSample(1, xR * (1.f - frz) + dampStateR * fb / tapSum);
         }
         else // Digital (estrutura da Fase 1 + slew/DC no wet)
         {

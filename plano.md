@@ -785,6 +785,10 @@ ficheiro.
   anel (período = totalSize). Testes D1–D4 + mainOut + U10.
 - **Fix mac `dimSizeAtt/dimMixAtt` no dtor** (EXC_BAD_ACCESS no teardown do
   test_ui/mac; Linux passava por sorte da heap).
+- **Finesse de ganho**: multitap com feedback normalizado (fugia com fb alto
+  em graves), verbs/delays nivelados a ±3 dB (o Hall/Shimmer vinham 12 dB
+  abaixo), fade de 40 ms em presets/RANDOM/restore, GR do limiter visível
+  na sidebar OUT. Testes G43b/c, mainOut (GR + dip), U10.
 - **Lote F–H**: `syncPolicyUi`/`lastPreset` repostos no restore (testes F1/F2),
   `getParamFloat` defensivo, Espaço passa ao host (teste F5), drift 122/104
   limpo, cobertura G38–G60 + C3. O G não achou bugs no DSP (só 1 fix de
