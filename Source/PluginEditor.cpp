@@ -333,6 +333,8 @@ DeVerbEditor::~DeVerbEditor()
     trimDecayAtt.reset();
     masterAtt.reset();
     fwdMixAtt.reset();
+    dimSizeAtt.reset();
+    dimMixAtt.reset();
     revRateAtt.reset();
     revLfoAtt.reset();
     revDuckAtt.reset();
