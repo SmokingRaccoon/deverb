@@ -28,8 +28,9 @@ public:
 
     bool keyPressed(const juce::KeyPress& k) override
     {
-        // Espaço/Enter = clique (Throw dispara, Action corre, resto alterna).
-        if (k.isKeyCode(juce::KeyPress::spaceKey) || k.isKeyCode(juce::KeyPress::returnKey))
+        // Só Enter ativa: o Espaço passa ao host (play/stop) em vez de ser
+        // comido pela tecla focada (THROW/RANDOM disparavam sem querer).
+        if (k.isKeyCode(juce::KeyPress::returnKey))
         {
             press();
             return true;

@@ -1,5 +1,17 @@
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <juce_audio_processors/juce_audio_processors.h>
+
+// Leitura defensiva de param float (message thread): com IDs congelados e
+// o teste mainIds, um rename sem atualizar a UI rebentava em ->load() de
+// nullptr. Em debug o jassert acusa; em release devolve o default.
+inline float getParamFloat(juce::AudioProcessorValueTreeState& apvts,
+                           const juce::String& id, float dflt = 0.f)
+{
+    if (auto* v = apvts.getRawParameterValue(id)) return v->load();
+    jassertfalse;
+    return dflt;
+}
 
 // Tema v4 "Espelho de Agua" (DESIGN-V4.md + styles-v4.css).
 // Tokens papel/tinta, acentos por modulo, discos M 48 / XL 76.

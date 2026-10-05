@@ -35,10 +35,12 @@ public:
     }
 
     std::function<void(V4Stepper*)> onTetherClick;
-    // Preset global (sem param): mostra o último aplicado.
+    // Preset global (sem param): mostra o último aplicado; i < 0 = Custom
+    // (RANDOM ou tweaks manuais depois do preset).
     void setExternalIndex(int i)
     {
-        idx_ = juce::jlimit(0, options_.size() - 1, i);
+        if (i < 0) { custom_ = true; touched_ = true; }
+        else { custom_ = false; idx_ = juce::jlimit(0, options_.size() - 1, i); }
         repaint();
     }
     void setTethered(bool t, int fwdIdx = -1, bool fwdCustom = false)
@@ -125,7 +127,7 @@ public:
         if (!touched_ && param_ == nullptr && placeholder_.isNotEmpty())
             txt = placeholder_;
         else if (custom_ || (tethered_ && fwdCustom_))
-            txt = "Custom…";
+            txt = "Custom..."; // ASCII: "…" UTF-8 rendia "â‹" no pintado
         else
             txt = options_[juce::jlimit(0, options_.size()-1, shown)];
         g.setColour(fg);

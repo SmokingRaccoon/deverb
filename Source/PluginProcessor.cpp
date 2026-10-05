@@ -890,7 +890,14 @@ void DeVerbProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
     if (auto xml = getXmlFromBinary(data, sizeInBytes))
         if (xml->hasTagName(apvts.state.getType()))
+        {
             apvts.replaceState(juce::ValueTree::fromXml(*xml));
+            // Repõe o espelho atómico (o DSP não lê Strings por bloco):
+            // sem isto, um restore com MAN deixava o áudio em Host.
+            auto ui = apvts.state.getChildWithName("v4ui");
+            syncPolicyUi.store(ui.isValid()
+                && ui.getProperty("syncMode", "host").toString() == "man" ? 1 : 0);
+        }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

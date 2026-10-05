@@ -374,6 +374,21 @@ int main()
         CHECK(noisyFinite(proc), "DSP finito após navegar presets");
     }
 
+    // F2. Nome do preset sobrevive ao restore (lastPreset em v4ui).
+    {
+        d.probePreset(3);
+        juce::MemoryBlock mb;
+        proc.getStateInformation(mb);
+        d.probePreset(9);
+        CHECK(d.presetIndex() == 9, "navega para 9");
+        proc.setStateInformation(mb.getData(), (int) mb.getSize());
+        d.pump(120);
+        CHECK(d.presetIndex() == 3, "restore repõe nome do preset");
+        d.pressRandom();
+        int lp = (int) proc.apvts.state.getChildWithName("v4ui").getProperty("lastPreset", -2);
+        CHECK(lp == -1, "RANDOM marca lastPreset -1 (Custom)");
+    }
+
     // U10. OUT: knobs SIZE/WIDTH escrevem e mostram.
     {
         d.dragDial("dim_size", 0.7f);
@@ -382,6 +397,24 @@ int main()
         d.dragDial("dim_mix", 0.5f);
         CHECK(std::abs(d.stored("dim_mix") - 0.5f) < 0.02f, "WIDTH escreve dim_mix");
         CHECK(noisyFinite(proc), "DSP finito com widener");
+    }
+
+    // F5. Espaço passa ao host; só Enter ativa a tecla focada.
+    {
+        auto* k = ed.findKey("link_master");
+        CHECK(k != nullptr, "tecla link_master existe");
+        if (k != nullptr)
+        {
+            bool before = k->getState();
+            CHECK(! k->keyPressed(juce::KeyPress(juce::KeyPress::spaceKey)),
+                  "espaço não é consumido");
+            CHECK(k->getState() == before, "espaço não alterna");
+            CHECK(k->keyPressed(juce::KeyPress(juce::KeyPress::returnKey)),
+                  "enter ativa");
+            CHECK(k->getState() != before, "enter alterna");
+            k->keyPressed(juce::KeyPress(juce::KeyPress::returnKey)); // repõe
+            CHECK(k->getState() == before, "enter repõe");
+        }
     }
 
     if (failures == 0) std::printf("\nALL UI SESSION TESTS PASSED\n");

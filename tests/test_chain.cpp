@@ -516,6 +516,58 @@ static int mainRouting()
     int e150 = echoAt(150.f);
     CHECK(std::abs(e90 - 16000) < 300, "MAN 90 BPM: eco 1/8 a 16000 (got %d)", e90);
     CHECK(std::abs(e150 - 9600) < 300, "MAN 150 BPM: eco 1/8 a 9600 (got %d)", e150);
+
+    // F1. Restore repõe syncPolicyUi: com playhead falso a 150 e sync MAN
+    // guardado a 90, o reload tem de seguir o knob (16000), não o host.
+    {
+        struct FakePh : juce::AudioPlayHead
+        {
+            juce::Optional<juce::AudioPlayHead::PositionInfo> getPosition() const override
+            {
+                juce::AudioPlayHead::PositionInfo p;
+                p.setBpm(150.0);
+                p.setIsPlaying(true);
+                p.setPpqPosition(8.0);
+                return p;
+            }
+        } ph;
+        DeVerbProcessor q;
+        q.prepareToPlay(sr, 512);
+        q.setPlayHead(&ph);
+        q.setSyncMode("man");
+        setF(q, "tempo_bpm", 90.f);
+        setF(q, "master", 1.f);
+        setF(q, "fwd_mix", 1.f);
+        setF(q, "fwd_gate_mix", 0.f);
+        setI(q, "fwd_delay_note", 6); // 1/8
+        setF(q, "fwd_delay_fb", 0.f);
+        setF(q, "fwd_delay_mix", 1.f);
+        setF(q, "fwd_verb_mix", 0.f);
+        juce::MemoryBlock mb;
+        q.getStateInformation(mb);
+        q.setSyncMode("host"); // suja; o restore tem de repor MAN
+        q.setStateInformation(mb.getData(), (int) mb.getSize());
+        juce::MidiBuffer midi;
+        juce::AudioBuffer<float> b2(2, 512);
+        std::vector<float> out;
+        for (int k = 0; k < 48000 / 512; ++k)
+        {
+            for (int i = 0; i < 512; ++i)
+            {
+                float v = (k * 512 + i == 0) ? 1.f : 0.f;
+                b2.setSample(0, i, v);
+                b2.setSample(1, i, v);
+            }
+            q.processBlock(b2, midi);
+            for (int i = 0; i < 512; ++i) out.push_back(b2.getSample(0, i));
+        }
+        int best = -1;
+        float bv = 0.f;
+        for (int i = 2000; i < 20000 && i < (int) out.size(); ++i)
+            if (std::abs(out[(size_t) i]) > bv) { bv = std::abs(out[(size_t) i]); best = i; }
+        q.setPlayHead(nullptr);
+        CHECK(std::abs(best - 16000) < 300, "restore MAN ignora host (eco %d)", best);
+    }
     return failures;
 }
 

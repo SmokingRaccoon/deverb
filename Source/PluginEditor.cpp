@@ -67,6 +67,8 @@ DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
     ps->onCustomPick = [this](int i)
     {
         applyFactoryPreset(proc.apvts, i);
+        auto ui = proc.apvts.state.getOrCreateChildWithName("v4ui", nullptr);
+        ui.setProperty("lastPreset", i, nullptr);
         if (presetStepper != nullptr)
             presetStepper->setExternalIndex(i);
     };
@@ -357,6 +359,10 @@ void DeVerbEditor::valueTreeRedirected(juce::ValueTree&)
     setSelMod(proc.getSelMod(), false);
     if (syncSeg != nullptr)
         syncSeg->setIndex(proc.getSyncMode() == "man" ? 1 : 0, false);
+    // Nome do preset não mente após restore/undo (era stale).
+    auto ui = proc.apvts.state.getChildWithName("v4ui");
+    if (presetStepper != nullptr && ui.isValid())
+        presetStepper->setExternalIndex((int) ui.getProperty("lastPreset", -1));
 }
 
 void DeVerbEditor::setSelMod(const juce::String& m, bool animate)
@@ -461,6 +467,10 @@ void DeVerbEditor::randomize()
 {
     juce::Random rng;
     applyRealList(proc.apvts, civilizedRandom(rng));
+    auto ui = proc.apvts.state.getOrCreateChildWithName("v4ui", nullptr);
+    ui.setProperty("lastPreset", -1, nullptr);
+    if (presetStepper != nullptr)
+        presetStepper->setExternalIndex(-1);
 }
 
 juce::Slider* DeVerbEditor::findDial(const juce::String& paramId)
@@ -548,7 +558,7 @@ void DeVerbEditor::timerCallback()
     bool hostEff = proc.isTempoFromHost();
     if (bpmNum) bpmNum->setAlpha(hostEff ? 0.5f : 1.f);
     if (morphReadViz)
-        morphReadViz->setText(juce::String((int)std::round(proc.apvts.getRawParameterValue("morph")->load() * 100)) + "%");
+        morphReadViz->setText(juce::String((int)std::round(getParamFloat(proc.apvts, "morph") * 100)) + "%");
     if (scopeViz) scopeViz->repaint();
     if (captureViz) captureViz->repaint();
     if (ripples && ripples->active()) { ripples->repaint(); ripples->gc(); }

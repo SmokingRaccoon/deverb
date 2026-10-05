@@ -208,7 +208,7 @@ void V4Viz::paint(juce::Graphics& g)
         case Taps:
         {
             float fb = 0.35f;
-            if (proc != nullptr) fb = proc->apvts.getRawParameterValue("fwd_delay_fb")->load();
+            if (proc != nullptr) fb = getParamFloat(proc->apvts, "fwd_delay_fb", 0.35f);
             g.setColour(labP);
             g.drawLine(r.getX(), r.getBottom()-4, r.getRight(), r.getBottom()-4, 1.f);
             for (int i = 0; i < 8; ++i)

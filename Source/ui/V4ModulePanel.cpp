@@ -245,8 +245,8 @@ void V4ModulePanel::flipStep(int step)
     // Se REV com link, não escreve — pede UNLINK (tether)
     if (engine_ == "rev")
     {
-        bool linkM = proc_.apvts.getRawParameterValue("link_master")->load() > 0.5f;
-        bool linkG = proc_.apvts.getRawParameterValue("link_gate")->load() > 0.5f;
+        bool linkM = getParamFloat(proc_.apvts, "link_master") > 0.5f;
+        bool linkG = getParamFloat(proc_.apvts, "link_gate") > 0.5f;
         if (linkM && linkG)
         {
             if (onTetherClick && step >= 0 && step < (int)stepBtns_.size())
@@ -256,7 +256,7 @@ void V4ModulePanel::flipStep(int step)
     }
     if (auto* p = proc_.apvts.getParameter(id))
     {
-        int bits = (int)proc_.apvts.getRawParameterValue(id)->load();
+        int bits = (int) getParamFloat(proc_.apvts, id);
         bits ^= (1 << step);
         p->setValueNotifyingHost(p->convertTo0to1((float)bits));
     }
@@ -290,7 +290,7 @@ void V4ModulePanel::updateLinkState()
         {
             if (auto* c = dynamic_cast<juce::AudioParameterChoice*>(p))
                 return c->getIndex();
-            return (int)std::round(proc_.apvts.getRawParameterValue(use)->load());
+            return (int)std::round(getParamFloat(proc_.apvts, use, (float)dflt));
         }
         return dflt;
     };
@@ -416,7 +416,7 @@ void V4ModulePanel::updateLinkState()
             else if (fwdId.endsWith("gate_pattern"))
             {
                 // pattern int (bits) -> índice na lista de fábrica
-                int b = (int)proc_.apvts.getRawParameterValue(fwdId)->load();
+                int b = (int) getParamFloat(proc_.apvts, fwdId);
                 fwdI = -1;
                 int k = 0;
                 for (auto& fp : Gater::factoryPatterns)
@@ -427,7 +427,7 @@ void V4ModulePanel::updateLinkState()
                 if (fwdI < 0) { fwdI = 0; fwdCustom = true; }
             }
             else if (proc_.apvts.getParameter(fwdId) != nullptr)
-                fwdI = (int)std::round(proc_.apvts.getRawParameterValue(fwdId)->load());
+                fwdI = (int)std::round(getParamFloat(proc_.apvts, fwdId));
             s.st->setTethered(linked, fwdI, fwdCustom);
         }
         for (auto& k : keys_)
