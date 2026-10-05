@@ -1,6 +1,6 @@
 # deVerb — Manual de Funções por Módulo
 
-> Descrição completa das **122 funções** do plugin, módulo a módulo, em
+> Descrição completa das **124 funções** do plugin, módulo a módulo, em
 > linguagem de manual de instruções. Serve de base ao manual do utilizador
 > e de referência ao designer (cada função indica o tipo de controlo ideal).
 >
@@ -23,6 +23,8 @@ ao vivo.
 | REV MIX | `rev_mix` | knob 0–1 | 0.40 | Quanto do motor REV (efeitos reversos) se ouve. |
 | MORPH | `morph` | knob 0–1 | 0.00 | **A macro estrela.** 0% = o REV copia o FWD (nos módulos com link ligado); 100% = o REV usa os seus valores próprios. Automatizar isto cria transições. |
 | MASTER | `master` | knob 0–1 | 0.80 | Volume geral de saída. |
+| SIZE | `dim_size` | knob 0–1 | 0.35 | Dimension Expander (OUT): tamanho das reflexões (0 = colado, 1 = slap/room pequena). |
+| WIDTH | `dim_mix` | knob 0–100% | 0% | Dimension Expander (OUT): quantidade de largura stereo. Soma-mono preservada por construção (mono-compatível). |
 | Preset... | — | combo | — | 11 presets de fábrica (Init, Trance Gate 16, Offbeat Chop, Big Hall Space, Reverse Tail, Reverse Throw, Beat Repeat, Stutter Brk, Dub Echo, Shimmer Pad, Build Up). |
 | RANDOM | — | botão | — | Gera um preset aleatório mas sempre audível (gamas musicais, nunca silêncio). |
 | FWD/REV | — | segmentado | FWD | Escolhe qual dos dois motores se edita nas colunas. Não é som, é só a "página" que se vê. |
@@ -219,11 +221,11 @@ a editar (seletor global FWD|REV).
    reverb Hall atrás.
 5. **Glitch controlado:** BeatRepeat 1/16 ×4, chance 20–40%, mix 0.5.
 
-Total: **122 parâmetros** (IDs congelados — nunca mudam de nome).
-## Apêndice A — Tabela completa (122 parâmetros, gerada do código)
+Total: **124 parâmetros** (IDs congelados — nunca mudam de nome).
+## Apêndice A — Tabela completa (124 parâmetros, gerada do código)
 
 > Gerada automaticamente de `createParams()` — se algum ID se repetir,
-> o teste de geração acusa. Última verificação: 122 únicos, 0 duplicados.
+> o teste de geração acusa. Última verificação: 124 únicos, 0 duplicados.
 
 ### motor (7)
 
@@ -401,3 +403,10 @@ Total: **122 parâmetros** (IDs congelados — nunca mudam de nome).
 | `link_gran` | Link Gran | on/off | - | ON |
 | `trim_delay` | Trim Delay | float | 0.25f, 4.f, 0.01f | 1.f |
 | `trim_decay` | Trim Decay | float | 0.25f, 2.f, 0.01f | 1.f |
+
+### out (2)
+
+| ID | Nome UI | Tipo | Gama / Opções | Default |
+|----|---------|------|---------------|---------|
+| `dim_size` | Dim Size | float | 0.f, 1.f, 0.01f | 0.35f |
+| `dim_mix` | Dim Mix | float | 0.f, 1.f, 0.01f | 0.f |

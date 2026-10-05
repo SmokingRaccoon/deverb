@@ -40,6 +40,7 @@ static int mainPower();
 static int mainIds();
 static int mainPreset();
 static int mainRouting();
+static int mainOut();
 int main()
 {
     const double sr = 48000.0;
@@ -223,13 +224,14 @@ int main()
     mainIds();
     mainPreset();
     mainRouting();
+    mainOut();
 
     if (failures == 0) std::printf("\nALL CHAIN TESTS PASSED\n");
     else std::printf("\n%d FAILURES\n", failures);
     return failures == 0 ? 0 : 1;
 }
 
-// --- IDs: presets/RANDOM só usam IDs reais + contagem congelada (122) ---
+// --- IDs: presets/RANDOM só usam IDs reais + contagem congelada (124) ---
 static int mainIds()
 {
     DeVerbProcessor p;
@@ -257,7 +259,75 @@ static int mainIds()
     }
     CHECK(missing == 0, "todos os IDs de presets/RANDOM existem (%d em falta)", missing);
     int nParams = p.getParameters().size();
-    CHECK(nParams == 122, "122 IDs congelados (got %d)", nParams);
+    CHECK(nParams == 124, "124 IDs congelados (got %d)", nParams);
+    return failures;
+}
+
+// --- OUT: dimension expander alarga + limiter trava depois dele ---
+static int mainOut()
+{
+    const double sr = 48000.0;
+    juce::MidiBuffer midi;
+    // Correlação L/R cai com dim_mix (width real no OUT).
+    {
+        DeVerbProcessor p;
+        p.prepareToPlay(sr, 512);
+        setF(p, "master", 1.f);
+        setF(p, "fwd_mix", 0.f);
+        setF(p, "fwd_gate_mix", 0.f);
+        setF(p, "fwd_delay_mix", 0.f);
+        setF(p, "fwd_verb_mix", 0.f);
+        setF(p, "dim_size", 0.5f);
+        setF(p, "dim_mix", 1.f);
+        juce::AudioBuffer<float> buf(2, 512);
+        double corr = 0.0, eL = 0.0, eR = 0.0;
+        int nn = 0;
+        for (int b = 0; b < 100; ++b)
+        {
+            for (int i = 0; i < 512; ++i)
+            {
+                float v = std::sin((b * 512 + i) * 2.f * 3.14159265f * 440.f / 48000.f) * 0.5f;
+                buf.setSample(0, i, v);
+                buf.setSample(1, i, v);
+            }
+            p.processBlock(buf, midi);
+            if (b < 10) continue; // settle dos slews
+            for (int i = 0; i < 512; ++i)
+            {
+                float l = buf.getSample(0, i), r = buf.getSample(1, i);
+                corr += (double) l * r;
+                eL += (double) l * l;
+                eR += (double) r * r;
+                ++nn;
+            }
+        }
+        corr /= std::sqrt(eL * eR + 1e-12);
+        CHECK(corr < 0.9, "OUT alarga (correlação %f)", corr);
+    }
+    // Com o widener quente, o limiter continua a travar a -1 dBFS.
+    {
+        DeVerbProcessor p;
+        p.prepareToPlay(sr, 512);
+        setF(p, "master", 1.f);
+        setF(p, "input_gain", 2.f);
+        setF(p, "dim_size", 1.f);
+        setF(p, "dim_mix", 1.f);
+        juce::AudioBuffer<float> buf(2, 512);
+        float peak = 0.f;
+        for (int b = 0; b < 100; ++b)
+        {
+            for (int i = 0; i < 512; ++i)
+            {
+                float v = std::sin((b * 512 + i) * 0.05f) * 0.9f;
+                buf.setSample(0, i, v);
+                buf.setSample(1, i, v);
+            }
+            p.processBlock(buf, midi);
+            for (int i = 0; i < 512; ++i)
+                peak = juce::jmax(peak, std::abs(buf.getSample(0, i)));
+        }
+        CHECK(peak <= 0.90f, "limiter trava com widener (pico %f)", peak);
+    }
     return failures;
 }
 

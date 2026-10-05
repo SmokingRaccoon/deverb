@@ -70,6 +70,10 @@ private:
     V4Viz* scopeViz = nullptr;
     V4Dial* fwdMixDial = nullptr;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> fwdMixAtt;
+    // OUT: dimension expander (faixa OUT na sidebar FWD)
+    V4Dial* dimSizeDial = nullptr;
+    V4Dial* dimMixDial = nullptr;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> dimSizeAtt, dimMixAtt;
     V4Viz* engineRevViz = nullptr;
     V4Seg* revModeSeg = nullptr;
     V4Seg* revSourceSeg = nullptr;

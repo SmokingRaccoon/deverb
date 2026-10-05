@@ -197,6 +197,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout DeVerbProcessor::createParam
         juce::StringArray { "G-D-V-Gr", "G-V-D-Gr", "D-G-V-Gr", "V-D-G-Gr" }, 0));
     layout.add(std::make_unique<juce::AudioParameterChoice>(
         "x_mode", "X Mode", juce::StringArray { "Add", "XFade" }, 0));
+    // --- OUT: dimension expander (pós-mix, pré-limiter; IDs congelados) ---
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        "dim_size", "Dim Size", juce::NormalisableRange<float>(0.f, 1.f, 0.01f), 0.35f));
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        "dim_mix", "Dim Mix", juce::NormalisableRange<float>(0.f, 1.f, 0.01f), 0.f));
     // Gate REV (defaults = FWD para arranque coerente):
     layout.add(std::make_unique<juce::AudioParameterChoice>(
         "rev_gate_rate", "REV Gate Rate", TempoInfo::noteNames(), 3));
@@ -326,6 +331,7 @@ void DeVerbProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     revVerb.prepare(sampleRate, samplesPerBlock);
     revGran.prepare(sampleRate);
     revGran.reseed(0x54321); // descorrelaciona os glitches FWD/REV
+    dimmer.prepare(sampleRate, samplesPerBlock);
     revBuf.setSize(2, samplesPerBlock, false, false, true);
     fwdBuf.setSize(2, samplesPerBlock, false, false, true);
     smoothInput.reset(sampleRate, 0.03);
@@ -762,11 +768,8 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     smoothRevMix.setTargetValue(apvts.getRawParameterValue("rev_mix")->load());
     smoothFwdMix.setTargetValue(apvts.getRawParameterValue("fwd_mix")->load());
 
-    // Limiter de segurança: peak follower (attack instantâneo, release 50 ms),
-    // ganho comum aos 2 canais. Só atua acima de -1 dBFS.
-    const float limCeil = 0.891251f; // -1 dBFS
-    const float limRel = limRelCoef;
-
+    // --- OUT: mistura final, widener e limiter (por esta ordem: o limiter
+    // vê os picos do wet já alargado).
     // Ponteiros fora do loop (getWritePointer por amostra = overhead).
     float* outPtr[2] = { buffer.getWritePointer(0),
                          nCh > 1 ? buffer.getWritePointer(1) : nullptr };
@@ -779,20 +782,37 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         const float gM = smoothMaster.getNextValue();
         const float gF = xfFwd.getNextValue() * smoothFwdMix.getNextValue();
         const float gR = xfRev.getNextValue() * smoothRevMix.getNextValue();
-        float mixed[2] = { 0.f, 0.f };
         for (int ch = 0; ch < nCh; ++ch)
         {
             float dry = outPtr[ch][i];
             float fw = fwdPtr[ch] != nullptr ? fwdPtr[ch][i] : fwdPtr[0][i];
             float rv = (revPtr[ch] != nullptr) ? revPtr[ch][i] : 0.f;
-            mixed[ch] = (dry * (1.f - gF) + fw * gF + rv * gR) * gM;
+            outPtr[ch][i] = (dry * (1.f - gF) + fw * gF + rv * gR) * gM;
         }
-        float peak = juce::jmax(std::abs(mixed[0]), nCh > 1 ? std::abs(mixed[1]) : 0.f);
+    }
+
+    // Widener pós-mix (mix=0 se o utilizador não o quiser; sem PWR dedicado
+    // nesta iteração). Corre sempre: custo < 0.5%/core.
+    dimmer.setSize01(apvts.getRawParameterValue("dim_size")->load());
+    dimmer.setMix(apvts.getRawParameterValue("dim_mix")->load());
+    dimmer.setEnabled(true);
+    if (! dimmer.isBypassed())
+        dimmer.process(buffer);
+    else if (dimmer.takeClear())
+        dimmer.reset();
+
+    // Limiter de segurança: peak follower (attack instantâneo, release 50 ms),
+    // ganho comum aos 2 canais. Só atua acima de -1 dBFS.
+    const float limCeil = 0.891251f; // -1 dBFS
+    const float limRel = limRelCoef;
+    for (int i = 0; i < n; ++i)
+    {
+        float peak = juce::jmax(std::abs(outPtr[0][i]), nCh > 1 ? std::abs(outPtr[1][i]) : 0.f);
         limPeak = (peak > limPeak) ? peak : limPeak * limRel;
         float gL = (limPeak > limCeil) ? limCeil / limPeak : 1.f;
-        outPtr[0][i] = mixed[0] * gL;
+        outPtr[0][i] *= gL;
         if (nCh > 1)
-            outPtr[1][i] = mixed[1] * gL;
+            outPtr[1][i] *= gL;
     }
 }
 

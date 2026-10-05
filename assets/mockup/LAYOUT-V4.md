@@ -34,6 +34,8 @@ Pitch de dials = 72px (celula 64x86); fila de dials em y local 112 nas barras e 
 | engine-fwd | visual | - | 24 | 64 | 288 | 28 |
 | scope | visual | - | 24 | 100 | 288 | 68 |
 | FWD MIX | dial M | `fwd_mix` | 240 | 176 | 64 | 86 |
+| SIZE | dial M | `dim_size` | 24 | 186 | 64 | 86 |
+| WIDTH | dial M | `dim_mix` | 96 | 186 | 64 | 86 |
 
 ### Barra lateral REV (o passado: o leitor)
 
@@ -177,6 +179,6 @@ Pitch de dials = 72px (celula 64x86); fila de dials em y local 112 nas barras e 
 
 ## Resumo
 
-- 193 elementos (dial=70, key=23, numbox=1, plate=4, seg=16, step=32, stepper=14, viz=33); 122 IDs `data-param*` identicos a `index.html`.
+- 195 elementos (dial=72, key=23, numbox=1, plate=4, seg=16, step=32, stepper=14, viz=33); 124 IDs `data-param*` identicos a `index.html` (+dim_size/dim_mix no OUT).
 - Estados: 4 (modulo selecionado: gate/delay/verb/gran). Validado sem sobreposicoes em nenhum.
 - Discos de dial: M = 48px (escala 58px), XL (MORPH) = 76px (escala 88px) -> todos >= 48px. Texto >= 10px. Teclas >= 20px, seg/stepper >= 28px.

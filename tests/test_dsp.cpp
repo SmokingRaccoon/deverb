@@ -10,6 +10,7 @@
 #include "../Source/dsp/ReverbEngine.h"
 #include "../Source/dsp/Granular.h"
 #include "../Source/dsp/ReverseEngine.h"
+#include "../Source/dsp/Dimension.h"
 #include "../Source/core/RevLinker.h"
 #include "../Source/core/EnableRamp.h"
 #include <vector>
@@ -38,6 +39,7 @@ int mainGranular();
 int mainReverse();
 int mainDelayAlgos();
 int mainBypass();
+int mainDimension();
 
 static float meanAbs(const std::vector<float>& v, int from, int to);
 
@@ -282,6 +284,7 @@ int main()
     mainGranular();
     mainReverse();
     mainDelayAlgos();
+    mainDimension();
     mainBypass();
 
     if (failures == 0) std::printf("\nALL TESTS PASSED\n");
@@ -626,6 +629,122 @@ int mainDelayAlgos()
         eRel = std::sqrt(eRel / 12000.0);
         CHECK(eFrz > 0.3, "freeze sustenta o loop (rms %f)", eFrz);
         CHECK(eRel < eFrz * 0.05, "unfreeze liberta e decai (%f < %f)", eRel, eFrz);
+    }
+
+    return failures;
+}
+
+// --- Dimension Expander (OUT) ---
+static std::vector<float> renderDim(Dimension& d, int total, float freqL = 440.f, float freqR = 440.f)
+{
+    std::vector<float> out; // L intercalado com R
+    juce::AudioBuffer<float> blk(2, 512);
+    int pos = 0;
+    while (pos < total)
+    {
+        int n = juce::jmin(512, total - pos);
+        blk.setSize(2, n, false, false, true);
+        for (int i = 0; i < n; ++i)
+        {
+            blk.setSample(0, i, std::sin((pos + i) * 2.f * 3.14159265f * freqL / 48000.f) * 0.5f);
+            blk.setSample(1, i, std::sin((pos + i) * 2.f * 3.14159265f * freqR / 48000.f) * 0.5f);
+        }
+        d.process(blk);
+        for (int i = 0; i < n; ++i) { out.push_back(blk.getSample(0, i)); out.push_back(blk.getSample(1, i)); }
+        pos += n;
+    }
+    return out;
+}
+
+int mainDimension()
+{
+    // --- D1. mix=0 é passthrough bit-exato ---
+    {
+        Dimension d;
+        d.prepare(48000.0, 512);
+        d.setSize01(0.7f);
+        d.setMix(0.f);
+        auto out = renderDim(d, 20000);
+        bool exact = true;
+        for (int k = 0; k < 20000 && exact; ++k)
+        {
+            float eL = std::sin(k * 2.f * 3.14159265f * 440.f / 48000.f) * 0.5f;
+            if (out[(size_t) k * 2] != eL || out[(size_t) k * 2 + 1] != eL) exact = false;
+        }
+        CHECK(exact, "dimension mix 0 = passthrough exato");
+    }
+
+    // --- D2. Mono entra, stereo sai (L/R diferem) ---
+    {
+        Dimension d;
+        d.prepare(48000.0, 512);
+        d.setSize01(0.5f);
+        d.setMix(1.f);
+        auto out = renderDim(d, 48000);
+        double diff = 0.0, corr = 0.0, eL = 0.0, eR = 0.0;
+        for (int k = 5000; k < 48000; ++k)
+        {
+            float l = out[(size_t) k * 2], r = out[(size_t) k * 2 + 1];
+            diff += std::abs(l - r);
+            corr += (double) l * r;
+            eL += (double) l * l;
+            eR += (double) r * r;
+        }
+        diff /= 43000.0;
+        corr /= std::sqrt(eL * eR + 1e-12);
+        CHECK(diff > 0.02, "mono alarga (L-R médio %f)", diff);
+        CHECK(corr < 0.99, "canais descorrelacionam (%f)", corr);
+    }
+
+    // --- D3. Soma-mono preservada (±1 dB do dry) ---
+    {
+        Dimension d;
+        d.prepare(48000.0, 512);
+        d.setSize01(0.8f);
+        d.setMix(1.f);
+        auto out = renderDim(d, 48000);
+        float md = 0.f;
+        for (int k = 5000; k < 48000; ++k)
+        {
+            float dry = std::sin(k * 2.f * 3.14159265f * 440.f / 48000.f) * 0.5f;
+            float mono = (out[(size_t) k * 2] + out[(size_t) k * 2 + 1]) * 0.5f;
+            md = juce::jmax(md, std::abs(mono - dry));
+        }
+        CHECK(md < 0.02f, "mono-sum preservada (desvio %f)", md);
+    }
+
+    // --- D4. Varrer Size não clica; extremos estáveis ---
+    {
+        Dimension d;
+        d.prepare(48000.0, 512);
+        d.setMix(1.f);
+        juce::AudioBuffer<float> blk(2, 512);
+        float maxStep = 0.f, peak = 0.f, prevL = 0.f, prevR = 0.f;
+        bool first = true;
+        for (int b = 0; b < 200; ++b) // ~2.1 s; size 0->1 a meio
+        {
+            if (b == 100) d.setSize01(1.f);
+            for (int i = 0; i < 512; ++i)
+            {
+                float v = std::sin((b * 512 + i) * 0.03f) * 0.5f;
+                blk.setSample(0, i, v);
+                blk.setSample(1, i, v * 0.7f);
+            }
+            d.process(blk);
+            for (int i = 0; i < 512; ++i)
+            {
+                float l = blk.getSample(0, i), r = blk.getSample(1, i);
+                if (! std::isfinite(l + r)) { maxStep = 1e9f; break; }
+                if (! first)
+                    maxStep = juce::jmax(maxStep, juce::jmax(std::abs(l - prevL), std::abs(r - prevR)));
+                first = false;
+                prevL = l;
+                prevR = r;
+                peak = juce::jmax(peak, juce::jmax(std::abs(l), std::abs(r)));
+            }
+        }
+        CHECK(maxStep < 0.15f, "sweep de Size sem clique (maxStep %f)", maxStep);
+        CHECK(peak < 4.f, "extremos finitos (pico %f)", peak);
     }
 
     return failures;

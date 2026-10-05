@@ -108,6 +108,25 @@ DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
         proc.apvts, "fwd_mix", *fwdMixDial);
     fwdMixDial->fixDoubleClick();
 
+    // ---- OUT: dimension expander (sidebar FWD, por baixo do scope) ----
+    dimSizeDial = new V4Dial("SIZE", "m", WaterLnF::ink, 0.35);
+    dimSizeDial->setBounds(24, 186, 64, 86);
+    dimSizeDial->setupRange(0.0, 1.0, "n2");
+    dimSizeDial->setTooltip("Dimension Expander: tamanho das reflexões (OUT)");
+    addAndMakeVisible(dimSizeDial); owned_.add(dimSizeDial);
+    dimSizeAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        proc.apvts, "dim_size", *dimSizeDial);
+    dimSizeDial->fixDoubleClick();
+
+    dimMixDial = new V4Dial("WIDTH", "m", WaterLnF::ink, 0.0);
+    dimMixDial->setBounds(96, 186, 64, 86);
+    dimMixDial->setupRange(0.0, 1.0, "pct");
+    dimMixDial->setTooltip("Dimension Expander: quantidade de largura (OUT)");
+    addAndMakeVisible(dimMixDial); owned_.add(dimMixDial);
+    dimMixAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        proc.apvts, "dim_mix", *dimMixDial);
+    dimMixDial->fixDoubleClick();
+
     auto* er = new V4Viz(V4Viz::EngineRev, &proc);
     er->setBounds(24, 406, 112, 28);
     addAndMakeVisible(er); owned_.add(er); engineRevViz = er;
@@ -283,7 +302,7 @@ DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
         int n = 1;
         auto tab = [&](juce::Component* c) { if (c != nullptr) c->setExplicitFocusOrder(n++); };
         tab(presetStepper); tab(randomKey); tab(bpmNum); tab(syncSeg);
-        tab(fwdMixDial);
+        tab(fwdMixDial); tab(dimSizeDial); tab(dimMixDial);
         tab(revModeSeg); tab(revSourceSeg); tab(revCaptureSeg);
         tab(revRateDial); tab(revLfoDial); tab(revDuckDial); tab(revMixDial);
         tab(inputDial);
@@ -449,6 +468,8 @@ juce::Slider* DeVerbEditor::findDial(const juce::String& paramId)
             if (auto* d = panels[e][m]->findDial(paramId)) return d;
     // globais por id conhecido
     if (paramId == "fwd_mix") return fwdMixDial;
+    if (paramId == "dim_size") return dimSizeDial;
+    if (paramId == "dim_mix") return dimMixDial;
     if (paramId == "rev_rate") return revRateDial;
     if (paramId == "rev_lfo") return revLfoDial;
     if (paramId == "rev_duck") return revDuckDial;
@@ -509,7 +530,8 @@ void DeVerbEditor::timerCallback()
             panels[e][m]->updateLinkState();
 
     // dials globais: efetivo = próprio + refresh da caixa
-    for (auto* d : { fwdMixDial, revRateDial, revLfoDial, revDuckDial, revMixDial,
+    for (auto* d : { fwdMixDial, dimSizeDial, dimMixDial,
+                     revRateDial, revLfoDial, revDuckDial, revMixDial,
                      inputDial, morphDial, trimDelayDial, trimDecayDial, masterDial })
         if (d != nullptr)
             d->syncEffToOwn();
@@ -556,8 +578,12 @@ void DeVerbEditor::paint(juce::Graphics& g)
     // linha de agua
     g.setColour(WaterLnF::water);
     g.drawLine(0, 334, 1280, 334, 1.f);
-    // legendas fora das caixas (meridiano)
+    // legenda da faixa OUT (sidebar FWD, por baixo do scope)
     g.setFont(10.f);
+    g.setColour(WaterLnF::labP);
+    g.drawFittedText("OUT", juce::Rectangle<int>(24, 172, 100, 12),
+                     juce::Justification::centredLeft, 1);
+    // legendas fora das caixas (meridiano)
     g.setColour(WaterLnF::labP);
     g.drawFittedText("X-MODE", juce::Rectangle<int>(1058, 282, 116, 14),
                      juce::Justification::centredLeft, 1);

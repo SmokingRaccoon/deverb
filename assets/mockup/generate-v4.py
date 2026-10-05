@@ -9,7 +9,7 @@ Contrato:
   - Janela fixa 1280x624, origem topo-esquerda, todos os widgets em px absolutos
     (coordenadas do #stage), como nas versoes anteriores.
   - IDs de parametro congelados: o conjunto de data-param / data-param-fwd /
-    data-param-rev tem de ser IDENTICO ao de index.html (122 IDs) -- verificado.
+    data-param-rev tem de ser IDENTICO ao de index.html (124 IDs) -- verificado.
   - Cada controlo FWD e REV existe 2x (FWD em cima, REV em baixo); o REV leva
     data-twin = ID do gemeo FWD (a agulha-fantasma do dial).
   - Validador: sem sobreposicoes em nenhum dos 4 estados de modulo, nada fora da
@@ -84,6 +84,7 @@ GLOBAL_DIALS = {  # id: (label, min, max, def, fmt)
     "trim_delay": ("T-DLY", .25, 4, 1.0, "x"), "trim_decay": ("T-DEC", .25, 2, 1.0, "x"),
     "rev_rate": ("RATE", .25, 2, 1.0, "x"), "rev_lfo": ("LFO", 0, 1, 0.0, "n2"),
     "rev_duck": ("DUCK", 0, 1, .3, "n2"), "tempo_bpm": ("BPM", 40, 240, 120.0, "n1"),
+    "dim_size": ("SIZE", 0, 1, .35, "n2"), "dim_mix": ("WIDTH", 0, 1, 0.0, "pct"),
 }
 
 
@@ -399,6 +400,8 @@ def build_sidebars():
               '<b>FWD</b><i class="dir"></i><span class="cap">PRESENT</span>', engine="fwd", pol="p")
     build_viz("scope", "scope", 24, c + 36, 288, 68, z, svg_scope(288, 68), engine="fwd", pol="p")
     build_global_dial("fwd_mix", 240, c + ROW_DIALS, z, "m", engine="fwd", acc="global", pol="p")
+    build_global_dial("dim_size", 24, c + 122, z, "m", acc="global", pol="p")
+    build_global_dial("dim_mix", 96, c + 122, z, "m", acc="global", pol="p")
 
     c = CY["rev"]
     z = "side-rev"
@@ -711,19 +714,22 @@ if tok:
 else:
     warnings.append("styles-v4.css sem tokens ainda (contraste nao verificado)")
 
-# cobertura dos 122 IDs
+# cobertura dos 124 IDs
 html_all = "\n".join(e["html"] for e in ELS)
 ids_new = set(re.findall(r'data-param(?:-fwd|-rev)?="([^"]+)"', html_all))
 old_path = os.path.join(HERE, "index.html")
 if os.path.exists(old_path):
     ids_old = set(re.findall(r'data-param(?:-fwd|-rev)?="([^"]+)"', open(old_path).read()))
     miss, extra = sorted(ids_old - ids_new), sorted(ids_new - ids_old)
+    # 124: +dim_size/dim_mix no OUT (adicionados de propósito; futuros IDs
+    # novos têm de entrar aqui ou o gerador recusa-se a escrever).
+    extra = [i for i in extra if i not in ("dim_size", "dim_mix")]
     if miss: errors.append(f"[IDS] faltam {len(miss)}: {miss}")
     if extra: errors.append(f"[IDS] a mais {len(extra)}: {extra}")
 else:
     warnings.append("index.html (v1) nao encontrado: cobertura de IDs nao comparada")
 
-print(f"elementos: {len(ELS)}  | IDs distintos: {len(ids_new)} (esperado 122)")
+print(f"elementos: {len(ELS)}  | IDs distintos: {len(ids_new)} (esperado 124)")
 cnt = {}
 for e in ELS: cnt[e['kind']] = cnt.get(e['kind'], 0) + 1
 print("por tipo:", ", ".join(f"{k}={v}" for k, v in sorted(cnt.items())))
@@ -734,7 +740,7 @@ if errors:
     print("\n--- ERROS ---")
     for e in errors: print(e)
     sys.exit(1)
-print("Validacao OK: sem sobreposicoes nos 4 estados, tudo dentro da zona, minimos cumpridos, 122 IDs identicos.")
+print("Validacao OK: sem sobreposicoes nos 4 estados, tudo dentro da zona, minimos cumpridos, 124 IDs identicos.")
 
 # ----------------------------------------------------------------------------
 # HTML
@@ -825,7 +831,7 @@ for m in MODS:
     md += table(f"Modulo {m.upper()} (coords locais; IDs FWD mostrados, REV = `rev_*` com `data-twin` para o gemeo FWD)",
                 items, MOD_X, CY["fwd"])
 md += ["## Resumo", "",
-       f"- {len(ELS)} elementos ({', '.join(f'{k}={v}' for k, v in sorted(cnt.items()))}); 122 IDs `data-param*` identicos a `index.html`.",
+       f"- {len(ELS)} elementos ({', '.join(f'{k}={v}' for k, v in sorted(cnt.items()))}); 124 IDs `data-param*` identicos a `index.html` (+dim_size/dim_mix no OUT).",
        "- Estados: 4 (modulo selecionado: gate/delay/verb/gran). Validado sem sobreposicoes em nenhum.",
        f"- Discos de dial: M = 48px (escala 58px), XL (MORPH) = 76px (escala 88px) -> todos >= 48px. Texto >= 10px. Teclas >= 20px, seg/stepper >= 28px."]
 with open(os.path.join(HERE, "LAYOUT-V4.md"), "w") as f:

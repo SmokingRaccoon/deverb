@@ -61,6 +61,8 @@ target_sources(deVerb PRIVATE
   Source/dsp/Granular.cpp
   Source/dsp/ReverseEngine.h
   Source/dsp/ReverseEngine.cpp
+  Source/dsp/Dimension.h
+  Source/dsp/Dimension.cpp
   Source/core/RevLinker.h
   Source/ui/BeatRuler.h
   Source/ui/AbletonLnF.h

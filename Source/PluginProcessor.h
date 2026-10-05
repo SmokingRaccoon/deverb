@@ -7,10 +7,11 @@
 #include "dsp/ReverbEngine.h"
 #include "dsp/Granular.h"
 #include "dsp/ReverseEngine.h"
+#include "dsp/Dimension.h"
 #include "core/RevLinker.h"
 
-// deVerb: processador dual-engine FWD+REV (gate/delay/verb/gran por motor).
-// 122 IDs de parâmetro congelados — não renomear (parte presets/automação).
+// deVerb: processador dual-engine FWD+REV + widener no OUT.
+// 124 IDs de parâmetro congelados — não renomear (parte presets/automação).
 class DeVerbProcessor : public juce::AudioProcessor
 {
 public:
@@ -76,6 +77,7 @@ private:
     Delay revDelay;
     reverb::Reverb revVerb;
     Granular revGran;
+    Dimension dimmer; // widener no OUT (pós-mix, pré-limiter)
     juce::AudioBuffer<float> revBuf; // scratch stereo p/ o caminho REV
     juce::AudioBuffer<float> fwdBuf; // scratch: cadeia FWD (p/ XFADE/order)
     // XFADE: ganhos suavizados por engine + fase de beats interna.

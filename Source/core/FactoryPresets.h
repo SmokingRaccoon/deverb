@@ -38,7 +38,8 @@ inline const std::vector<FactoryPreset>& deVerbFactoryPresets()
           { { "fwd_gate_mix", 0.f }, { "fwd_delay_note", 8.f },
             { "fwd_delay_mix", 0.2f }, { "fwd_verb_algo", 1.f },
             { "fwd_verb_size", 0.7f }, { "fwd_verb_decay", 6.f },
-            { "fwd_verb_mix", 0.45f }, { "fwd_verb_predelay", 40.f } } },
+            { "fwd_verb_mix", 0.45f }, { "fwd_verb_predelay", 40.f },
+            { "dim_mix", 0.25f } } },
         { "Reverse Tail",
           { { "rev_mode", 1.f }, { "rev_mix", 0.5f }, { "rev_capture", 0.f },
             { "rev_rate", 1.f }, { "rev_duck", 0.4f },
@@ -62,7 +63,8 @@ inline const std::vector<FactoryPreset>& deVerbFactoryPresets()
           { { "fwd_gate_mix", 0.f }, { "fwd_delay_note", 9.f },
             { "fwd_delay_mix", 0.15f }, { "fwd_verb_algo", 3.f },
             { "fwd_verb_decay", 8.f }, { "fwd_verb_size", 0.8f },
-            { "fwd_verb_damp", 0.2f }, { "fwd_verb_mix", 0.5f } } },
+            { "fwd_verb_damp", 0.2f }, { "fwd_verb_mix", 0.5f },
+            { "dim_mix", 0.2f } } },
         { "Build Up",
           { { "fwd_gate_rate", 1.f }, { "fwd_gate_pattern", 0x844B },
             { "fwd_gate_smooth", 0.05f }, { "fwd_gate_mix", 1.f },
@@ -247,5 +249,8 @@ civilizedRandom(juce::Random& rng, float wildness = 0.f)
     out.emplace_back("morph", fr(0.f, 0.5f));
     out.emplace_back("trim_delay", fr(0.8f, 1.25f));
     out.emplace_back("trim_decay", fr(0.8f, 1.25f));
+    // OUT: largura moderada e lisonjeira (nunca oops-mono: é mono-safe).
+    out.emplace_back("dim_size", fr(0.2f, 0.6f));
+    out.emplace_back("dim_mix", fr(0.f, 0.4f));
     return out;
 }

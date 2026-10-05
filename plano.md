@@ -775,9 +775,14 @@ ficheiro.
   (dentro do orçamento). ASan+UBSan limpo nas 3 suites, 0 relatórios.
 - **Granular a fundo**: costura com xf stale no bloco do grab (+3 dB fantasma;
   agora xeff por amostra; teste 37); decay do Stutter por tempo de fragmento
-  (antes morria em ~200 ms e o TIME era decorativo); TIME mostra o locked com
+  (antes morria em ~200 ms e o TIME ficava decorativo); TIME mostra o locked com
   nota + DECAY esbate fora de BR/Stutter; LED GRAB! com hold de 250 ms (o flag
   cru aliasava a 30 Hz).
+- **Dimension Expander no OUT** (124 IDs): 4 delays ultra-curtos + matriz
+  fora-de-fase (wet soma em L, subtrai em R → soma-mono exata). Caça grossa:
+  o 1º `popSample` de CADA canal tem de avançar o read pointer da JUCE
+  DelayLine, senão o canal parado relê a mesma zona e clica a cada volta do
+  anel (período = totalSize). Testes D1–D4 + mainOut + U10.
 
 ## 18. Glossário rápido
 

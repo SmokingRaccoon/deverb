@@ -26,6 +26,7 @@ add_executable(test_dsp
   ../Source/dsp/Gater.cpp
   ../Source/dsp/ReverbEngine.cpp
   ../Source/dsp/Granular.cpp
+  ../Source/dsp/Dimension.cpp
   ../Source/dsp/ReverseEngine.cpp
 )
 
@@ -65,6 +66,7 @@ add_executable(test_chain
   ../Source/dsp/Gater.cpp
   ../Source/dsp/ReverbEngine.cpp
   ../Source/dsp/Granular.cpp
+  ../Source/dsp/Dimension.cpp
   ../Source/dsp/ReverseEngine.cpp
 )
 
@@ -99,6 +101,7 @@ add_executable(test_ui
   ../Source/dsp/Gater.cpp
   ../Source/dsp/ReverbEngine.cpp
   ../Source/dsp/Granular.cpp
+  ../Source/dsp/Dimension.cpp
   ../Source/dsp/ReverseEngine.cpp
 )
 

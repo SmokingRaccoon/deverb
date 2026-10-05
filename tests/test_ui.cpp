@@ -220,7 +220,7 @@ int main()
         CHECK(noisyFinite(proc), "DSP finito após restore");
     }
 
-    // U5b. selMod sobrevive ao save/load (fora dos 122 IDs)
+    // U5b. selMod sobrevive ao save/load (fora dos 124 IDs)
     {
         d.selectMod("delay");
         juce::MemoryBlock mb;
@@ -372,6 +372,16 @@ int main()
         d.clickPresetArrow(false); // 0 -> 10
         CHECK(d.presetIndex() == 10, "seta prev recua com wrap");
         CHECK(noisyFinite(proc), "DSP finito após navegar presets");
+    }
+
+    // U10. OUT: knobs SIZE/WIDTH escrevem e mostram.
+    {
+        d.dragDial("dim_size", 0.7f);
+        CHECK(std::abs(d.stored("dim_size") - 0.7f) < 0.02f, "SIZE escreve dim_size");
+        CHECK(std::abs(d.shownDial("dim_size") - 0.7f) < 0.02f, "SIZE mostra SIZE");
+        d.dragDial("dim_mix", 0.5f);
+        CHECK(std::abs(d.stored("dim_mix") - 0.5f) < 0.02f, "WIDTH escreve dim_mix");
+        CHECK(noisyFinite(proc), "DSP finito com widener");
     }
 
     if (failures == 0) std::printf("\nALL UI SESSION TESTS PASSED\n");
