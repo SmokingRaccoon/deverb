@@ -52,6 +52,62 @@ struct UiSessionDriver
         if (auto* d = ed.findDial(id)) d->setValue(realVal, juce::sendNotificationSync);
         pump(30);
     }
+    void doubleClickDial(const char* id)
+    {
+        if (auto* d = ed.findDial(id))
+        {
+            juce::MouseEvent e(juce::Desktop::getInstance().getMainMouseSource(),
+                               juce::Point<float>(32.f, 32.f), juce::ModifierKeys(),
+                               0.f, 0.f, 0.f, 0.f, 0.f, d, d,
+                               juce::Time::getCurrentTime(), juce::Point<float>(32.f, 32.f),
+                               juce::Time::getCurrentTime(), 2, false);
+            d->mouseDoubleClick(e);
+            pump(30);
+        }
+    }
+    void singleClickDialBox(const char* id)
+    {
+        // Um clique só: após ~250 ms abre o editor (sem mudar o valor).
+        if (auto* vd = dynamic_cast<V4Dial*>(ed.findDial(id)))
+            for (int c = 0; c < vd->getNumChildComponents(); ++c)
+                if (auto* l = dynamic_cast<juce::Label*>(vd->getChildComponent(c)))
+                {
+                    auto mm = juce::Desktop::getInstance().getMainMouseSource();
+                    auto now = juce::Time::getCurrentTime();
+                    juce::MouseEvent e1(mm, juce::Point<float>(28.f, 7.f), juce::ModifierKeys(),
+                                        0.f, 0.f, 0.f, 0.f, 0.f, l, l, now,
+                                        juce::Point<float>(28.f, 7.f), now, 1, false);
+                    vd->mouseDown(e1);
+                    vd->mouseUp(e1);
+                    pump(400);
+                    dblBoxEditor_ = (l->getCurrentTextEditor() != nullptr);
+                    l->hideEditor(true);
+                    break;
+                }
+    }
+    bool dblBoxEditor_ = false;
+    void doubleClickDialBox(const char* id)
+    {
+        // Sequência real na caixa: down, up, double-click (listener do dial,
+        // chamado via V4Dial onde é público).
+        if (auto* vd = dynamic_cast<V4Dial*>(ed.findDial(id)))
+            for (int c = 0; c < vd->getNumChildComponents(); ++c)
+                if (auto* l = dynamic_cast<juce::Label*>(vd->getChildComponent(c)))
+                {
+                    auto mm = juce::Desktop::getInstance().getMainMouseSource();
+                    auto now = juce::Time::getCurrentTime();
+                    juce::MouseEvent e1(mm, juce::Point<float>(28.f, 7.f), juce::ModifierKeys(),
+                                        0.f, 0.f, 0.f, 0.f, 0.f, l, l, now,
+                                        juce::Point<float>(28.f, 7.f), now, 1, false);
+                    vd->mouseDown(e1);
+                    vd->mouseUp(e1);
+                    vd->mouseDoubleClick(e1);
+                    pump(30);
+                    dblBoxNoEditor_ = (l->getCurrentTextEditor() == nullptr);
+                    break;
+                }
+    }
+    bool dblBoxNoEditor_ = false;
     void clickRandom()
     {
         if (auto* k = ed.findKey("link_master")) { juce::ignoreUnused(k); }
@@ -427,6 +483,9 @@ int main()
     // U11. GR mostra a redução do limiter (não fica preso em 0).
     {
         d.setParam("input_gain", 1.f); // 2.0, quente
+        d.setParam("fwd_verb_algo", 1.f / 3.f); // Hall
+        d.setParam("fwd_verb_decay", 8.f);
+        d.setParam("fwd_verb_size", 0.8f);
         d.setParam("fwd_verb_mix", 1.f); // cauda por cima: limita a sério
         d.setParam("fwd_delay_mix", 0.5f);
         juce::MidiBuffer midi;
@@ -445,10 +504,39 @@ int main()
         juce::String gr = d.grText();
         CHECK(gr.startsWith("GR ") && gr != "GR 0.0", "GR mostra redução (%s)",
               gr.toRawUTF8());
-        d.setParam("input_gain", 0.025f); // ~0.05, calmo
+        // Calmo: cala módulos (as caudas quentes limitariam para sempre)
+        // e baixa o input; o hold esgota e o GR volta a 0.
+        d.setParam("input_gain", 0.025f); // ~0.05
+        d.setParam("fwd_verb_mix", 0.f);
+        d.setParam("fwd_delay_mix", 0.f);
+        d.setParam("gr_mode", 0.f);
+        d.setParam("rev_mode", 0.f);
         d.runAudio(500); // ~5 s: o hold do GR esgota e volta a 0
         juce::String gr2 = d.grText();
         CHECK(gr2 == "GR 0.0", "GR volta a 0 (%s)", gr2.toRawUTF8());
+    }
+
+    // U12. Duplo clique repõe o default (todos os knobs).
+    {
+        d.dragDial("fwd_verb_decay", 10.f);
+        d.doubleClickDial("fwd_verb_decay");
+        CHECK(std::abs(d.stored("fwd_verb_decay") - 2.5f) < 0.05f, "dblclick repõe decay (%f)",
+              d.stored("fwd_verb_decay"));
+        d.dragDial("master", 0.2f);
+        d.doubleClickDial("master");
+        CHECK(std::abs(d.stored("master") - 0.8f) < 0.02f, "dblclick repõe master (%f)",
+              d.stored("master"));
+        d.dragDial("rev_delay_fb", 0.9f);
+        d.doubleClickDial("rev_delay_fb");
+        CHECK(std::abs(d.stored("rev_delay_fb") - 0.35f) < 0.02f, "dblclick repõe REV (%f)",
+              d.stored("rev_delay_fb"));
+        d.dragDial("fwd_gate_smooth", 0.9f);
+        d.singleClickDialBox("fwd_gate_smooth");
+        CHECK(d.dblBoxEditor_, "1 clique na caixa abre o editor");
+        d.doubleClickDialBox("fwd_gate_smooth");
+        CHECK(d.dblBoxNoEditor_, "caixa: sem editor após duplo clique");
+        CHECK(std::abs(d.stored("fwd_gate_smooth") - 0.15f) < 0.02f, "dblclick na caixa repõe (%f)",
+              d.stored("fwd_gate_smooth"));
     }
 
     if (failures == 0) std::printf("\nALL UI SESSION TESTS PASSED\n");

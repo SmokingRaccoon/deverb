@@ -7,7 +7,8 @@
 // mapeamento da agulha, agulha própria + fantasma (REV com link) + ponto.
 // A caixa mostra o valor EFETIVO formatado com unidades (editável; ao
 // escrever, edita o valor próprio). XL (MORPH) não tem caixa própria.
-class V4Dial : public juce::Slider
+class V4Dial : public juce::Slider, // (Component já é MouseListener)
+               private juce::Timer
 {
 public:
     V4Dial(const juce::String& label, const juce::String& variant,
@@ -39,6 +40,7 @@ public:
         if (variant == "mer")
             setColour(juce::Slider::textBoxTextColourId, juce::Colour(0xffECE9E2));
         setDoubleClickReturnValue(true, defVal);
+        hookBoxLabel();
         setVelocityModeParameters(1.0, 1, 0.0, true);
         setColour(juce::Slider::textBoxTextColourId, juce::Colour(0xff55544F));
         updateTextFns();
@@ -106,6 +108,33 @@ public:
     }
     // O SliderAttachment impõe double-click normalizado; repõe o real.
     void fixDoubleClick() { setDoubleClickReturnValue(true, defV); }
+
+    // Desambiguação 1 vs 2 cliques na caixa (ver ctor). Fora da caixa,
+    // o comportamento do Slider passa intacto (drag!).
+    void mouseDown(const juce::MouseEvent& e) override
+    {
+        if (e.eventComponent == boxLabel_) downPos_ = e.position;
+        else juce::Slider::mouseDown(e);
+    }
+    void mouseUp(const juce::MouseEvent& e) override
+    {
+        if (e.eventComponent != boxLabel_) { juce::Slider::mouseUp(e); return; }
+        if (justReset_) { justReset_ = false; return; }
+        if (e.position.getDistanceFrom(downPos_) < 4.f)
+        {
+            waiting_ = true;
+            startTimer(250);
+        }
+    }
+    void mouseDoubleClick(const juce::MouseEvent& e) override
+    {
+        if (e.eventComponent != boxLabel_) { juce::Slider::mouseDoubleClick(e); return; }
+        stopTimer();
+        waiting_ = false;
+        justReset_ = true;
+        if (boxLabel_ != nullptr) boxLabel_->hideEditor(true);
+        setValue(defV, juce::sendNotificationSync);
+    }
 
     double rangeLo() const { return lo_; }
     double rangeHi() const { return hi_; }
@@ -179,12 +208,47 @@ public:
     }
 
 private:
+    // A caixa nasce no lookAndFeelChanged (e renasce se o LnF mudar) —
+    // procurá-la no ctor era cedo demais e o hook nunca se aplicava.
+    void lookAndFeelChanged() override
+    {
+        juce::Slider::lookAndFeelChanged();
+        hookBoxLabel();
+    }
+    void hookBoxLabel()
+    {
+        // Na caixa: 1 clique edita, 2 reõem (a edição automática do Label
+        // está desligada — sem isto o 1º clique abria logo o editor e o 2º
+        // nunca chegava a lado nenhum: "duplo clique nunca funciona").
+        // O addMouseListener é OBRIGATÓRIO: os handlers do Component NÃO
+        // borbulham para o pai (só listeners registados recebem eventos
+        // dos filhos) — sem ele, os cliques na caixa morriam no Label.
+        for (int i = 0; i < getNumChildComponents(); ++i)
+            if (auto* l = dynamic_cast<juce::Label*>(getChildComponent(i)))
+            {
+                l->setEditable(false, false);
+                l->addMouseListener(this, false);
+                boxLabel_ = l;
+            }
+    }
+    void timerCallback() override
+    {
+        stopTimer();
+        if (waiting_)
+        {
+            waiting_ = false;
+            if (boxLabel_ != nullptr) boxLabel_->showEditor();
+        }
+    }
     void updateTextFns()
     {
         // Mantém as lambdas sincronizadas com os overrides.
         textFromValueFunction = [this](double v) { return getTextFromValue(v); };
         valueFromTextFunction = [this](const juce::String& t) { return getValueFromText(t); };
     }
+    juce::Label* boxLabel_ = nullptr;
+    juce::Point<float> downPos_ {};
+    bool waiting_ = false, justReset_ = false;
 
     double lo_ = 0.0, hi_ = 1.0;
     juce::String fmt_ = "n2";
