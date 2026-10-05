@@ -46,16 +46,16 @@ pluginval) — com TrueType o caminho é fiável em todas as plataformas.
 - **Banda FWD 238** (papel): barra lateral (engine + scope + `FWD MIX`) + área de módulo 896×198.
 - **Meridiano 104** (linha y=334): `INPUT → 4 pedras (cadeia = chain_order) → MORPH+ALL → THROW → T-DLY/T-DEC → X-MODE/ORDER → MASTER`.
 - **Banda REV 238** (tinta): espelho do FWD (translação, nunca texto invertido).
-- 8 `V4ModulePanel` (4 módulos × FWD/REV), attachments criados **uma vez** no ctor; `selectedModule` em `apvts.state/v4ui/selMod` (fora dos 122 IDs); visibilidade + `ComponentAnimator` 180ms (curtas; sem leitura de prefers-reduced-motion — o JUCE não expõe a API).
+- 8 `V4ModulePanel` (4 módulos × FWD/REV), attachments criados **uma vez** no ctor; `selectedModule` em `apvts.state/v4ui/selMod` (fora dos 124 IDs); visibilidade + `ComponentAnimator` 180ms (curtas; sem leitura de prefers-reduced-motion — o JUCE não expõe a API).
 
 ## Regras para futuros widgets (ler antes de mexer)
 
-1. Janela e IDs congelados: 1280×624, 122 params (`fwd_*`/`gr_*`, `rev_*`/`rev_gr_*`, 22 globais). Novos widgets mapeiam para params existentes ou são `visual`.
+1. Janela e IDs congelados: 1280×624, 124 params (`fwd_*`/`gr_*`, `rev_*`/`rev_gr_*`, 22 globais). Novos widgets mapeiam para params existentes ou são `visual`.
 2. Attachments no ctor, nunca rebind (o cross-talk FWD|REV morreu com `bind*Column()`).
 3. `resized()` só posiciona — sem `addItemList`, sem criar attachments.
 4. Labels curtos nos segs (recalibrado com Nimbus real: `BEAT/SLICE/REV/PITCH/STUT`, `CHANCE/ENV/MANUAL`); texto ≥10px, dial ≥48px, teclas ≥20px, seg/stepper ≥22px.
 5. ASCII no texto pintado.
-6. Validar: `python3 assets/mockup/generate-v4.py` (122 IDs, 0 overlaps), `test_ui` sob `xvfb-run`, `pluginval --strictness-level 10`.
+6. Validar: `python3 assets/mockup/generate-v4.py` (124 IDs, 0 overlaps), `test_ui` sob `xvfb-run`, `pluginval --strictness-level 10`.
 
 ## Protocolo de sessões heavy-user
 

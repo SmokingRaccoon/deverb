@@ -82,7 +82,7 @@ freeze/interrupt/manual OFF, morph contido; master/input fixos).
   presets, RANDOM, PWR, restore; correr sob xvfb).
   Correr: `cmake --build tests/build --target test_dsp test_chain test_ui`.
 
-## Tabela de parâmetros (122 IDs únicos)
+## Tabela de parâmetros (124 IDs únicos)
 
 Gerada do `createParams` — se algum ID se repetir, o teste de geração acusa.
 `fwd_*` = cadeia normal, `rev_*` = cadeia reversa (editável com o interruptor

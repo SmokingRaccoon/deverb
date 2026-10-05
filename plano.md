@@ -664,11 +664,11 @@ algorítmico no MVP; morph macro 0–100 % + links por módulo + trims;
 routing configurável só na fase 6.
 
 **Em aberto** (responder antes da fase indicada):
-1. THROW + DUCK entram no MVP do REV? (recomendação: sim) [fase 5]
-2. XFADE por beat entra na fase 6 ou fica para depois? [fase 6]
-3. LFO no rate do reverse entra no MVP? (barato, alto valor) [fase 5]
-4. MIDI: program-change de patterns por tecla na fase 2 ou depois? [fase 2]
-5. Nome final e códigos de plugin (4-char + LV2URI) antes da fase 0.
+1. THROW + DUCK entram no MVP do REV? (recomendação: sim) [fase 5] — **SHIPPED**.
+2. XFADE por beat entra na fase 6 ou fica para depois? [fase 6] — **SHIPPED**.
+3. LFO no rate do reverse entra no MVP? (barato, alto valor) [fase 5] — **SHIPPED**.
+4. MIDI: program-change de patterns por tecla na fase 2 ou depois? [fase 2] — **EM ABERTO**.
+5. Nome final e códigos de plugin (4-char + LV2URI) antes da fase 0. — **EM ABERTO**.
 
 ---
 
@@ -728,7 +728,7 @@ ficheiro.
 - **rev_mix duplicado**: o dummy da fase 0 sobreviveu à chegada do param real
   da fase 5 → IDs duplicados → `pluginval` 10 chumbava no state-restoration
   só nesse param. Removido o dummy. Lição: o gerador da tabela do README
-  conta dupes (hoje: 104 IDs únicos).
+  conta dupes (hoje: 124 IDs únicos).
 - **Cross-talk FWD|REV nos rebinds**: o initial update do NOVO attachment faz
   `slider.setValue (notify)` ainda com o VELHO vivo → o velho escrevia no
   param errado. Apanhado pelo `test_ui` (FWD ficava com o default do REV).
@@ -783,6 +783,16 @@ ficheiro.
   o 1º `popSample` de CADA canal tem de avançar o read pointer da JUCE
   DelayLine, senão o canal parado relê a mesma zona e clica a cada volta do
   anel (período = totalSize). Testes D1–D4 + mainOut + U10.
+- **Fix mac `dimSizeAtt/dimMixAtt` no dtor** (EXC_BAD_ACCESS no teardown do
+  test_ui/mac; Linux passava por sorte da heap).
+- **Lote F–H**: `syncPolicyUi`/`lastPreset` repostos no restore (testes F1/F2),
+  `getParamFloat` defensivo, Espaço passa ao host (teste F5), drift 122/104
+  limpo, cobertura G38–G60 + C3. O G não achou bugs no DSP (só 1 fix de
+  harness: threshold do duck; o resto foi afinar janelas/limiares dos
+  testes). Grab da foto em 2 memcpys (1.08 ms → 0.15 ms; cabe a 64
+  amostras), scope com drop-tail em vez de `reset()` (race), `stopTimer()`
+  no dtor. Re-medição: reset estrutural 0.27 ms, grab 0.15 ms (orçamento
+  10.7 ms). ASan+UBSan re-corridos limpos após as mudanças.
 
 ## 18. Glossário rápido
 

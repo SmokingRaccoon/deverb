@@ -33,6 +33,7 @@ public:
     void setThrowButton(bool b)      { throwBtn = b; }
 
     double getPlayPos() const { return playPos; }
+    bool isThrowing() const { return throwing; } // p/ testes e UI
     int getWritePos() const { return w; }
     int getCapacity() const { return cap; }
     double getCaptureBeatsVal() const { return captureBeats; }

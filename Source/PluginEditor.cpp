@@ -325,6 +325,7 @@ DeVerbEditor::DeVerbEditor(DeVerbProcessor& p)
 
 DeVerbEditor::~DeVerbEditor()
 {
+    stopTimer(); // primeiro: o callback a 30 Hz não corre a meio do teardown
     proc.apvts.state.removeListener(this);
     // Attachments primeiro: os Sliders morrem no owned_/painéis e um
     // SliderAttachment vivo a seguir chamava removeListener() em morto

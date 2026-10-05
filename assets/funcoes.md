@@ -24,7 +24,7 @@ ao vivo.
 | MORPH | `morph` | knob 0–1 | 0.00 | **A macro estrela.** 0% = o REV copia o FWD (nos módulos com link ligado); 100% = o REV usa os seus valores próprios. Automatizar isto cria transições. |
 | MASTER | `master` | knob 0–1 | 0.80 | Volume geral de saída. |
 | SIZE | `dim_size` | knob 0–1 | 0.35 | Dimension Expander (OUT): tamanho das reflexões (0 = colado, 1 = slap/room pequena). |
-| WIDTH | `dim_mix` | knob 0–100% | 0% | Dimension Expander (OUT): quantidade de largura stereo. Soma-mono preservada por construção (mono-compatível). |
+| WIDTH | `dim_mix` | knob 0–1 (mostra %) | 0% | Dimension Expander (OUT): quantidade de largura stereo. Soma-mono preservada por construção (mono-compatível). |
 | Preset... | — | combo | — | 11 presets de fábrica (Init, Trance Gate 16, Offbeat Chop, Big Hall Space, Reverse Tail, Reverse Throw, Beat Repeat, Stutter Brk, Dub Echo, Shimmer Pad, Build Up). |
 | RANDOM | — | botão | — | Gera um preset aleatório mas sempre audível (gamas musicais, nunca silêncio). |
 | FWD/REV | — | segmentado | FWD | Escolhe qual dos dois motores se edita nas colunas. Não é som, é só a "página" que se vê. |

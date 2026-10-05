@@ -134,11 +134,23 @@ void Granular::startGrab(double lenBeats, double bpm)
     // Foto do fragmento FINAL (após o /8 do Stutter): a reprodução lê daqui
     // e o anel pode continuar a gravar sem a contaminar. Sem alloc: os
     // vetores vêm pré-alocados do prepare (loopLen <= cap - 64).
-    fragLen = juce::jmin(cap, (int) std::ceil(loopLen));
-    for (int k = 0; k < fragLen; ++k)
+    // Cópia em 2 memcpys com wrap (não amostra-a-amostra com whiles: com
+    // fragmentos N1 isso custava ~1 ms = xrun a blocos de 64).
+    fragLen = 0;
+    if (cap > 0 && (int) loopL.size() >= cap && (int) loopR.size() >= cap)
     {
-        loopL[(size_t) k] = readRing(0, (float) ((double) loopStart + k));
-        loopR[(size_t) k] = readRing(1, (float) ((double) loopStart + k));
+        fragLen = juce::jmin(cap, (int) std::ceil(loopLen));
+        int s0 = (int) std::floor(loopStart) % cap;
+        if (s0 < 0) s0 += cap;
+        int n1 = juce::jmin(fragLen, cap - s0);
+        std::memcpy(loopL.data(), ringL.data() + s0, (size_t) n1 * sizeof(float));
+        std::memcpy(loopR.data(), ringR.data() + s0, (size_t) n1 * sizeof(float));
+        int n2 = fragLen - n1;
+        if (n2 > 0)
+        {
+            std::memcpy(loopL.data() + n1, ringL.data(), (size_t) n2 * sizeof(float));
+            std::memcpy(loopR.data() + n1, ringR.data(), (size_t) n2 * sizeof(float));
+        }
     }
     releaseLeft = 0;
     playing = true;

@@ -14,7 +14,7 @@ DeVerbProcessor::DeVerbProcessor()
           .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       apvts(*this, nullptr, "Params", createParams())
 {
-    // v4: estado de UI (módulo selecionado) vive na árvore, fora dos 122 IDs.
+    // v4: estado de UI (módulo selecionado) vive na árvore, fora dos 124 IDs.
     auto ui = apvts.state.getOrCreateChildWithName("v4ui", nullptr);
     if (! ui.hasProperty("selMod"))
         ui.setProperty("selMod", "gate", nullptr);
@@ -421,27 +421,33 @@ void DeVerbProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     // 4k/8k) escrevem a cauda em vez de rebentar o prepareToWrite.
     {
         int w = juce::jmin(n, scopeCap);
-        int skip = n - w;
-        if (scopeFifo.getFreeSpace() < w) scopeFifo.reset();
-        int s1 = 0, sz1 = 0, s2 = 0, sz2 = 0;
-        scopeFifo.prepareToWrite(w, s1, sz1, s2, sz2);
-        const float* dl = buffer.getReadPointer(0) + skip;
-        const float* dr = (nCh > 1 ? buffer.getReadPointer(1) : buffer.getReadPointer(0)) + skip;
-        auto put = [&](int start, int len, int off)
+        // Sem espaço: descarta a cauda em vez de reset() — o reset não é
+        // thread-safe contra o leitor da UI e deitava fora a história toda.
+        int free = scopeFifo.getFreeSpace();
+        if (free < w) w = free;
+        if (w > 0) // FIFO cheia e UI atrasada: salta a escrita, o áudio segue
         {
-            for (int i = 0; i < len; ++i)
+            int skip = n - w;
+            int s1 = 0, sz1 = 0, s2 = 0, sz2 = 0;
+            scopeFifo.prepareToWrite(w, s1, sz1, s2, sz2);
+            const float* dl = buffer.getReadPointer(0) + skip;
+            const float* dr = (nCh > 1 ? buffer.getReadPointer(1) : buffer.getReadPointer(0)) + skip;
+            auto put = [&](int start, int len, int off)
             {
-                int bi = off + i;
-                float m = (dl[bi] + dr[bi]) * 0.5f;
-                // NaN entrava no Path do scope (jlimit deixa-o passar):
-                // mata-se aqui, uma vez, para todos os leitores.
-                if (! std::isfinite(m)) m = 0.f;
-                scopeBuf[(size_t)(start + i)] = juce::jlimit(-1.f, 1.f, m);
-            }
-        };
-        put(s1, sz1, 0);
-        put(s2, sz2, sz1);
-        scopeFifo.finishedWrite(sz1 + sz2);
+                for (int i = 0; i < len; ++i)
+                {
+                    int bi = off + i;
+                    float m = (dl[bi] + dr[bi]) * 0.5f;
+                    // NaN entrava no Path do scope (jlimit deixa-o passar):
+                    // mata-se aqui, uma vez, para todos os leitores.
+                    if (! std::isfinite(m)) m = 0.f;
+                    scopeBuf[(size_t)(start + i)] = juce::jlimit(-1.f, 1.f, m);
+                }
+            };
+            put(s1, sz1, 0);
+            put(s2, sz2, sz1);
+            scopeFifo.finishedWrite(sz1 + sz2);
+        }
     }
 
     // --- Fase 5 (captura Dry): lê-se aqui porque o buffer muda a seguir.
@@ -821,10 +827,8 @@ void DeVerbProcessor::getScopeSnapshot(float* dst, int n)
     int avail = scopeFifo.getNumReady();
     int s1 = 0, sz1 = 0, s2 = 0, sz2 = 0;
     scopeFifo.prepareToRead(avail, s1, sz1, s2, sz2);
-    // Defesa contra reset() concorrente no overflow (não é thread-safe):
-    // índices fora da FIFO liam lixo fora do scopeBuf.
-    s1 = juce::jlimit(0, scopeCap - 1, s1); sz1 = juce::jlimit(0, scopeCap, sz1);
-    s2 = juce::jlimit(0, scopeCap - 1, s2); sz2 = juce::jlimit(0, scopeCap, sz2);
+    // (O escritor nunca faz reset() — ver drop-tail acima — por isso os
+    // índices são sempre válidos; o clamp por índice em baixo é só rede.)
     int total = sz1 + sz2;
     int skip = juce::jmax(0, total - n);
     int got = 0;
