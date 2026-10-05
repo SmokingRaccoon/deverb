@@ -280,6 +280,128 @@ int main()
         CHECK(g.getCurrentStep() == 0, "transiente fez reset (passo %d)", g.getCurrentStep());
     }
 
+    // --- G38. PanAlt: passos pares à esquerda, ímpares à direita ---
+    {
+        Gater g;
+        g.prepare(48000.0);
+        g.setRate(TempoInfo::Note::N16);
+        g.setSteps(16);
+        g.setPattern(0x0003); // passos 0 e 1 abertos
+        g.setSmooth(0.f);
+        g.setDepth(1.f);
+        g.setMix(1.f);
+        g.setPanAlt(1.f);
+        g.setTrigMode(Gater::TrigMode::Free);
+        g.setInternalBpm(128.0);
+        juce::AudioBuffer<float> buf(2, 12000);
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < 12000; ++i) buf.setSample(ch, i, 1.0f);
+        g.process(buf, t);
+        auto mlr = [&](int a, int b, int ch)
+        {
+            double s = 0.0;
+            for (int i = a; i < b; ++i) s += buf.getSample(ch, i);
+            return s / (b - a);
+        };
+        double l0 = mlr(2000, 5000, 0), r0 = mlr(2000, 5000, 1);
+        double l1 = mlr(7700, 10700, 0), r1 = mlr(7700, 10700, 1);
+        CHECK(l0 > 0.9 && r0 < 0.1, "passo par à esquerda (%f/%f)", l0, r0);
+        CHECK(r1 > 0.9 && l1 < 0.1, "passo ímpar à direita (%f/%f)", l1, r1);
+    }
+
+    // --- G39. Host ppq alinha o passo (trig Host + transporte) ---
+    {
+        Gater g;
+        g.prepare(48000.0);
+        g.setRate(TempoInfo::Note::N16); // passo = 0.25 beats
+        g.setSteps(16);
+        g.setPattern(0xFFFF);
+        g.setTrigMode(Gater::TrigMode::Host);
+        TempoInfo th;
+        th.fromHost = true;
+        th.isPlaying = true;
+        th.bpm = 120.0;
+        juce::AudioBuffer<float> buf(2, 512);
+        buf.clear();
+        th.ppqPosition = 2.0; // floor(2/0.25) % 16 = 8
+        g.process(buf, th);
+        CHECK(g.getCurrentStep() == 8, "ppq 2.0 -> passo 8 (got %d)", g.getCurrentStep());
+        th.ppqPosition = 2.3; // floor(9.2) = 9
+        g.process(buf, th);
+        CHECK(g.getCurrentStep() == 9, "ppq 2.3 -> passo 9 (got %d)", g.getCurrentStep());
+    }
+
+    // --- G40. Depth 0.5 deixa passar metade; smooth alonga a transição ---
+    {
+        auto width = [](float smooth)
+        {
+            Gater g;
+            g.prepare(48000.0);
+            g.setRate(TempoInfo::Note::N16);
+            g.setSteps(16);
+            g.setPattern(0x0001);
+            g.setSmooth(smooth);
+            g.setDepth(1.f);
+            g.setMix(1.f);
+            g.setTrigMode(Gater::TrigMode::Free);
+            g.setInternalBpm(128.0);
+            juce::AudioBuffer<float> buf(2, 24000);
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < 24000; ++i) buf.setSample(ch, i, 1.0f);
+            TempoInfo tt;
+            g.process(buf, tt);
+            int i90 = -1, i10 = -1;
+            for (int i = 5625; i < 22000; ++i)
+            {
+                float v = buf.getSample(0, i);
+                if (i90 < 0 && v < 0.9f) i90 = i;
+                if (v < 0.1f) { i10 = i; break; }
+            }
+            if (i90 < 0 || i10 < 0) return -1;
+            return i10 - i90;
+        };
+        int w0 = width(0.f), w05 = width(0.5f);
+        CHECK(w0 > 0 && w05 > w0 * 10, "smooth 0.5 alonga transição (%d vs %d)", w05, w0);
+        // Depth a meio
+        Gater g;
+        g.prepare(48000.0);
+        g.setRate(TempoInfo::Note::N16);
+        g.setSteps(16);
+        g.setPattern(0x0001);
+        g.setSmooth(0.f);
+        g.setDepth(0.5f);
+        g.setMix(1.f);
+        g.setTrigMode(Gater::TrigMode::Free);
+        g.setInternalBpm(128.0);
+        juce::AudioBuffer<float> buf(2, 12000);
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < 12000; ++i) buf.setSample(ch, i, 1.0f);
+        TempoInfo tt;
+        g.process(buf, tt);
+        double m = 0.0;
+        for (int i = 7000; i < 11000; ++i) m += buf.getSample(0, i);
+        m /= 4000.0;
+        CHECK(std::abs(m - 0.5) < 0.05, "depth 0.5 deixa metade (%f)", m);
+    }
+
+    // --- G60. Tabela de notas completa (semínima = 1 beat) ---
+    {
+        using N = TempoInfo::Note;
+        auto beats = [](N n) { return TempoInfo::noteToBeats(n); };
+        CHECK(beats(N::Free) == 0.0, "Free = 0");
+        CHECK(beats(N::N32) == 0.125, "1/32");
+        CHECK(std::abs(beats(N::N16T) - 1.0 / 6.0) < 1e-12, "1/16T");
+        CHECK(beats(N::N16) == 0.25, "1/16");
+        CHECK(beats(N::N16D) == 0.375, "1/16D");
+        CHECK(std::abs(beats(N::N8T) - 1.0 / 3.0) < 1e-12, "1/8T");
+        CHECK(beats(N::N8) == 0.5, "1/8");
+        CHECK(beats(N::N8D) == 0.75, "1/8D");
+        CHECK(beats(N::N4) == 1.0, "1/4");
+        CHECK(beats(N::N4D) == 1.5, "1/4D");
+        CHECK(beats(N::N2) == 2.0, "1/2");
+        CHECK(beats(N::N1) == 4.0, "1/1");
+    }
+
     mainVerb();
     mainGranular();
     mainReverse();
@@ -631,6 +753,89 @@ int mainDelayAlgos()
         CHECK(eRel < eFrz * 0.05, "unfreeze liberta e decai (%f < %f)", eRel, eFrz);
     }
 
+    // --- G41. Spread 0 = direto, 1 = cruzado (pingpong) ---
+    {
+        auto eco2r = [&](float spread)
+        {
+            Delay d;
+            setupDelayBase(d);
+            d.setAlgo(Delay::Algo::PingPong);
+            d.setFeedback(0.5f);
+            d.setSpread(spread);
+            auto out = renderDelayStereo(d, 60000, impulse);
+            return std::abs(out[(size_t) 36000 * 2 + 1]); // eco2 no R
+        };
+        float direct = eco2r(0.f), crossed = eco2r(1.f);
+        CHECK(direct < 0.05f && crossed > 0.4f && crossed < 0.6f,
+              "spread cruza o feedback (R: %f -> %f)", direct, crossed);
+    }
+
+    // --- G42. Wow depth modula o tempo (vibrato mensurável) ---
+    {
+        Delay d;
+        setupDelayBase(d);
+        d.setAlgo(Delay::Algo::Tape);
+        d.setFeedback(0.f); // eco único, sem realimentação
+        d.setWowRate(5.f);
+        d.setWowDepthMs(20.f);
+        auto out = renderDelay(d, 60000, impulse);
+        // Sem wow o eco cai na amostra 18000; com wow±20 ms desvia-se.
+        float peak0 = 0.f;
+        int at0 = -1;
+        for (int i = 17000; i < 19000; ++i)
+            if (std::abs(out[(size_t) i]) > peak0) { peak0 = std::abs(out[(size_t) i]); at0 = i; }
+        CHECK(std::abs(at0 - 18000) > 100, "wow desvia o eco (%d vs 18000)", at0);
+        // O wow espalha o impulso (é físico); audível mas mais baixo.
+        CHECK(peak0 > 0.2f, "eco com wow continua audível (%f)", peak0);
+    }
+
+    // --- G43. Freeze no Reverse segura a janela; sem freeze esvazia ---
+    // Seno 1 s, depois silêncio: congelado repete a janela (sustenta);
+    // a gravar silêncio, o anel esvazia e o loop cala-se.
+    {
+        auto tailRms = [&](bool freeze)
+        {
+            Delay d;
+            d.prepare(48000.0, 512);
+            d.setAlgo(Delay::Algo::Reverse);
+            d.setTimeMs(500.f);
+            d.setMix(1.f);
+            d.setFrozen(false);
+            d.setTempoBpm(120.0);
+            auto sine = [](int i) { return std::sin(i * 0.02f) * 0.5f; };
+            auto out = renderDelay(d, 48000, sine);
+            (void) out;
+            d.setFrozen(freeze);
+            auto tail = renderDelay(d, 96000, [](int) { return 0.f; });
+            double e = 0.0;
+            for (int i = 72000; i < 96000; ++i) e += tail[(size_t) i] * tail[(size_t) i];
+            return std::sqrt(e / 24000.0);
+        };
+        double frz = tailRms(true), live = tailRms(false);
+        CHECK(frz > 0.15, "freeze segura a janela Reverse (rms %f)", frz);
+        CHECK(live < 0.05, "sem freeze o anel esvazia (rms %f)", live);
+    }
+
+    // --- G44. Damping escurece por repetição (não o eco direto) ---
+    // O damping vive no loop: o 1º eco sai intacto, o 2º sai domado.
+    {
+        auto echo2 = [&](float dampHz)
+        {
+            Delay d;
+            setupDelayBase(d);
+            d.setAlgo(Delay::Algo::Digital);
+            d.setFeedback(0.5f);
+            d.setDampingHz(dampHz);
+            auto out = renderDelay(d, 40000, impulse);
+            float peak = 0.f;
+            for (int i = 35000; i < 37000; ++i)
+                peak = juce::jmax(peak, std::abs(out[(size_t) i]));
+            return peak;
+        };
+        double hi = echo2(18000.f), lo = echo2(1000.f);
+        CHECK(hi > 0.3 && lo < 0.15, "2º eco domado (pico %.2f vs %.2f)", hi, lo);
+    }
+
     return failures;
 }
 
@@ -902,6 +1107,129 @@ int mainReverse()
         double ducked = renderDuck(1.f);
         CHECK(dry > 0.5, "referência sem duck passa (média %f)", dry);
         CHECK(ducked < dry * 0.9, "duck acompanha o burst (%.3f < %.3f)", ducked, dry);
+    }
+
+    // --- G56. Rate nos extremos: 0.25× e 2× (varispeed) ---
+    {
+        auto travessias = [&](float rate)
+        {
+            ReverseEngine e;
+            e.prepare(sr);
+            e.setMode(ReverseEngine::Mode::Loop);
+            e.setRate(rate);
+            e.setLfoDepth(0.f);
+            e.setCaptureBeats(2.0);
+            e.setDuckDepth(0.f);
+            auto sine = [](int i) { return std::sin(i * 2.0f * 3.14159265f * 440.f / 48000.f); };
+            recordOnly(e, 48000, sine);
+            juce::AudioBuffer<float> out(2, 12000);
+            out.clear();
+            e.renderBlock(out, t, 120.0, false);
+            int zc = 0;
+            for (int i = 3001; i < 12000; ++i) // após o slew do rate
+                if ((out.getSample(0, i - 1) < 0) != (out.getSample(0, i) < 0)) ++zc;
+            return zc;
+        };
+        // 110 Hz em 9000 amostras ≈ 20.6 períodos ≈ 41 travessias.
+        int z025 = travessias(0.25f);
+        // 880 Hz em 9000 amostras ≈ 165 períodos ≈ 330 travessias.
+        int z20 = travessias(2.f);
+        CHECK(z025 > 25 && z025 < 60, "rate 0.25× desce 2 oitavas (%d)", z025);
+        CHECK(z20 > 250 && z20 < 410, "rate 2× sobe oitava (%d)", z20);
+    }
+
+    // --- G57. Capture 3/4 beats dimensiona a cauda do throw ---
+    {
+        auto tailLen = [&](double beats)
+        {
+            ReverseEngine e;
+            e.prepare(sr);
+            e.setMode(ReverseEngine::Mode::Throw);
+            e.setRate(1.f);
+            e.setLfoDepth(0.f);
+            e.setCaptureBeats(beats);
+            e.setDuckDepth(0.f);
+            recordOnly(e, 96000, [](int) { return 1.0f; });
+            e.setThrowButton(true);
+            juce::AudioBuffer<float> blk(2, 512);
+            int total = 0, lastHot = 0, n = 0;
+            for (int b = 0; b < 200; ++b)
+            {
+                blk.setSize(2, 512, false, false, true);
+                blk.clear();
+                e.recordBlock(blk);
+                juce::AudioBuffer<float> o(2, 512);
+                o.clear();
+                e.renderBlock(o, t, 120.0, false);
+                for (int i = 0; i < 512; ++i)
+                {
+                    if (std::abs(o.getSample(0, i)) > 0.1f) lastHot = total;
+                    ++total;
+                    ++n;
+                }
+                if (b > 5 && ! e.isThrowing()) break;
+            }
+            (void) n;
+            return lastHot;
+        };
+        int t2 = tailLen(2.0); // 1 s @120 = 48000
+        int t4 = tailLen(4.0); // 2 s @120 = 96000
+        CHECK(std::abs(t2 - 48000) < 6000, "throw 2 beats ~1 s (%d)", t2);
+        CHECK(std::abs(t4 - 96000) < 9000, "throw 4 beats ~2 s (%d)", t4);
+    }
+
+    // --- G58. MIDI throw dispara sem botão ---
+    {
+        ReverseEngine e;
+        e.prepare(sr);
+        e.setMode(ReverseEngine::Mode::Throw);
+        e.setRate(1.f);
+        e.setLfoDepth(0.f);
+        e.setCaptureBeats(1.0);
+        e.setDuckDepth(0.f);
+        recordOnly(e, 48000, [](int) { return 1.0f; });
+        juce::AudioBuffer<float> o(2, 512);
+        o.clear();
+        e.renderBlock(o, t, 120.0, true); // nota, sem botão
+        float head = 0.f;
+        for (int i = 0; i < 512; ++i) head = juce::jmax(head, std::abs(o.getSample(0, i)));
+        CHECK(head > 0.5f, "midiThrow dispara (pico %f)", head);
+    }
+
+    // --- G59. LFO vagueia o rate (deriva do período) ---
+    // 0.1 Hz em 0.4 s deriva ~4%: o meio-período médio mexe ~2 amostras
+    // com LFO, ~0 sem. Sem reanchors na janela (ciclo 24000 > 20000).
+    {
+        auto drift = [&](float lfo)
+        {
+            ReverseEngine e;
+            e.prepare(sr);
+            e.setMode(ReverseEngine::Mode::Loop);
+            e.setRate(1.f);
+            e.setLfoDepth(lfo);
+            e.setCaptureBeats(2.0);
+            e.setDuckDepth(0.f);
+            auto sine = [](int i) { return std::sin(i * 2.0f * 3.14159265f * 440.f / 48000.f); };
+            recordOnly(e, 96000, sine);
+            juce::AudioBuffer<float> out(2, 20000);
+            out.clear();
+            e.renderBlock(out, t, 120.0, false);
+            auto meanGap = [&](int from, int to)
+            {
+                double s = 0.0;
+                int n = 0, prev = -1;
+                for (int i = from; i < to; ++i)
+                    if ((out.getSample(0, i - 1) < 0) != (out.getSample(0, i) < 0))
+                    {
+                        if (prev >= 0) { s += i - prev; ++n; }
+                        prev = i;
+                    }
+                return n > 0 ? s / n : 0.0;
+            };
+            return std::abs(meanGap(1000, 10000) - meanGap(11000, 20000));
+        };
+        double d0 = drift(0.f), d1 = drift(1.f);
+        CHECK(d1 > 1.0 && d0 < 0.3, "LFO vagueia o rate (deriva %.2f vs %.2f)", d1, d0);
     }
 
     return failures;
@@ -1404,6 +1732,224 @@ int mainGranular()
         CHECK(std::abs(m - 0.5) < 0.02, "sem costura fantasma no grab (média %f)", m);
     }
 
+    // --- G50. Modo Off = passthrough bit-exato ---
+    {
+        Granular g;
+        g.prepare(48000.0);
+        g.setMode(Granular::Mode::Off);
+        g.setMix(0.5f);
+        g.setInternalBpm(120.0);
+        TempoInfo tt;
+        juce::AudioBuffer<float> buf(2, 512);
+        bool exact = true;
+        for (int b = 0; b < 10 && exact; ++b)
+        {
+            for (int i = 0; i < 512; ++i)
+            {
+                float v = std::sin((b * 512 + i) * 0.02f) * 0.5f;
+                buf.setSample(0, i, v);
+                buf.setSample(1, i, v * 0.5f);
+            }
+            juce::AudioBuffer<float> ref(2, 512);
+            ref.copyFrom(0, 0, buf, 0, 0, 512);
+            ref.copyFrom(1, 0, buf, 1, 0, 512);
+            g.process(buf, tt);
+            for (int ch = 0; ch < 2 && exact; ++ch)
+                for (int i = 0; i < 512; ++i)
+                    if (buf.getSample(ch, i) != ref.getSample(ch, i)) exact = false;
+        }
+        CHECK(exact, "gran Off = passthrough exato");
+    }
+
+    // --- G51. Interrupt troca dry por wet (com mix) ---
+    // Slice em high (flux 0, 1ª metade do fragmento): sem interrupt o dry
+    // passa, com interrupt é cortado e só fica o wet.
+    {
+        auto level = [&](bool interrupt)
+        {
+            Granular g;
+            g.prepare(48000.0);
+            g.setMode(Granular::Mode::Slice);
+            g.setTrig(Granular::Trig::Manual);
+            g.setLenNote(TempoInfo::Note::N16);
+            g.setTimeMs(2000.f);
+            g.setFlux(0.f);
+            g.setMix(0.5f);
+            g.setInterrupt(interrupt);
+            g.setInternalBpm(120.0);
+            TempoInfo tt;
+            std::vector<float> out;
+            renderGrab(g, tt, 48000, out, [](int) { return 0.5f; });
+            g.setManual(true);
+            renderGrab(g, tt, 512, out, [](int) { return 0.5f; });
+            g.setManual(false);
+            renderGrab(g, tt, 12000, out, [](int) { return 0.5f; });
+            int trig = 48000 + 512;
+            double m = 0.0;
+            for (int i = trig + 500; i < trig + 2500 && i < (int) out.size(); ++i)
+                m += out[(size_t) i];
+            return m / 2000.0;
+        };
+        double off = level(false), on = level(true);
+        CHECK(off > 0.2, "sem interrupt há dry+wet (%.3f)", off);
+        CHECK(on < off * 0.6, "interrupt corta o dry (%.3f < %.3f)", on, off);
+    }
+
+    // --- G52. Reseed descorrelaciona duas vozes ---
+    {
+        Granular a, b;
+        for (auto* g : { &a, &b })
+        {
+            g->prepare(48000.0);
+            g->setMode(Granular::Mode::Slice);
+            g->setTrig(Granular::Trig::Chance);
+            g->setChance(0.5f);
+            g->setLenNote(TempoInfo::Note::N16);
+            g->setMix(1.f);
+            g->setInterrupt(false);
+            g->setInternalBpm(128.0);
+        }
+        b.reseed(0x54321);
+        TempoInfo tt;
+        std::vector<float> oa, ob;
+        auto in = [](int i) { return 0.5f * std::sin(i * 0.01f) + (i % 7 == 0 ? 0.3f : 0.f); };
+        renderGrab(a, tt, 40000, oa, in);
+        renderGrab(b, tt, 40000, ob, in);
+        double diff = 0.0;
+        for (size_t i = 0; i < oa.size() && i < ob.size(); ++i)
+            diff += std::abs(oa[i] - ob[i]);
+        CHECK(diff > 1.0, "reseed descorrelaciona (diff %.1f)", diff);
+    }
+
+    // --- G53. LEN N8/N32 dimensionam o fragmento (grab manual + BR×1) ---
+    {
+        auto fragLen = [&](TempoInfo::Note ln)
+        {
+            Granular g;
+            g.prepare(48000.0);
+            g.setMode(Granular::Mode::BeatRepeat);
+            g.setTrig(Granular::Trig::Manual);
+            g.setLenNote(ln);
+            g.setRepeats(1);
+            g.setMix(1.f);
+            g.setInterrupt(false);
+            g.setInternalBpm(120.0);
+            TempoInfo tt;
+            // Preenche com rampa e dispara: o fim do 1º loop marca o len.
+            std::vector<float> out;
+            auto ramp = [](int i) { return (float) i / 48000.f; };
+            renderGrab(g, tt, 48000, out, ramp);
+            g.setManual(true);
+            renderGrab(g, tt, 512, out, ramp);
+            g.setManual(false);
+            renderGrab(g, tt, 30000, out, [](int) { return 0.f; });
+            // Com rampa monótona, o fim do loop = descontinuidade máxima.
+            // (trig = ponto do grab em índices de out, não fim do bloco.)
+            int trig = 48000;
+            float jump = 0.f;
+            int at = -1;
+            for (int i = trig + 200; i < trig + 14000 && i < (int) out.size(); ++i)
+            {
+                float d = std::abs(out[(size_t) i] - out[(size_t) i - 1]);
+                if (d > jump) { jump = d; at = i - trig; }
+            }
+            return at;
+        };
+        int l8 = fragLen(TempoInfo::Note::N8);     // 0.5 beats = 12000
+        int l32 = fragLen(TempoInfo::Note::N32);   // 0.125 beats = 3000
+        CHECK(std::abs(l8 - 12000) < 600, "LEN N8 = 12000 amostras (got %d)", l8);
+        CHECK(std::abs(l32 - 3000) < 300, "LEN N32 = 3000 amostras (got %d)", l32);
+    }
+
+    // --- G54. Xfade 1 vs 50 ms na costura (largura da zona suave) ---
+    {
+        auto seamWidth = [&](float xfms)
+        {
+            Granular g;
+            g.prepare(48000.0);
+            g.setMode(Granular::Mode::BeatRepeat);
+            g.setTrig(Granular::Trig::Manual);
+            g.setLenNote(TempoInfo::Note::N16); // 6000
+            g.setRepeats(4);
+            g.setXfadeMs(xfms);
+            g.setMix(1.f); // dry 0: só a costura cai na banda de contagem
+            g.setInterrupt(false);
+            g.setInternalBpm(120.0);
+            TempoInfo tt;
+            // Degrau a meio do fragmento: costura fim(0.8)->começo(0.2)
+            // se excluirmos o degrau da janela, só a costura conta.
+            std::vector<float> out;
+            auto stepFn = [](int i) { return i < 45000 ? 0.2f : 0.8f; };
+            renderGrab(g, tt, 48000, out, stepFn);
+            g.setManual(true);
+            renderGrab(g, tt, 512, out, stepFn);
+            g.setManual(false);
+            renderGrab(g, tt, 20000, out, stepFn);
+            // Fragmento = [42000, 48000): degrau aos 3000. A costura da
+            // 2ª volta ([6000-xf, 6000] em offsets) é o que se conta; a
+            // janela cobre-a inteira para xf=50 (1500 -> [4500,6000]).
+            int trig = 48000 + 512;
+            int soft = 0;
+            for (int i = trig + 4500; i < trig + 6500 && i < (int) out.size(); ++i)
+            {
+                float v = out[(size_t) i];
+                if (v > 0.25f && v < 0.75f) ++soft;
+            }
+            return soft;
+        };
+        int w1 = seamWidth(1.f), w50 = seamWidth(50.f);
+        CHECK(w50 > 200 && w50 > w1 * 3, "xfade 50 ms alarga a costura (%d vs %d)", w50, w1);
+    }
+
+    // --- G55. Repeats 16 e chance nos extremos ---
+    {
+        Granular g;
+        g.prepare(48000.0);
+        g.setMode(Granular::Mode::BeatRepeat);
+        g.setTrig(Granular::Trig::Manual);
+        g.setLenNote(TempoInfo::Note::N16);
+        g.setRepeats(16);
+        g.setDecay(0.99f); // teto do range: ~sem decay
+        g.setMix(1.f);
+        g.setInterrupt(false);
+        g.setInternalBpm(120.0);
+        TempoInfo tt;
+        std::vector<float> out;
+        renderGrab(g, tt, 48000, out, [](int) { return 0.5f; });
+        g.setManual(true);
+        renderGrab(g, tt, 512, out, [](int) { return 0.5f; });
+        g.setManual(false);
+        renderGrab(g, tt, 110000, out, [](int) { return 0.f; });
+        int trig = 48000 + 512;
+        double m = 0.0;
+        for (int i = trig + 14 * 6000; i < trig + 15 * 6000 && i < (int) out.size(); ++i)
+            m += std::abs(out[(size_t) i]);
+        CHECK(m / 6000.0 > 0.3, "15º repeat ainda audível (média %f)", m / 6000.0);
+        // Chance 0 nunca dispara; 1 dispara no 1º quantum.
+        Granular c0, c1;
+        for (auto* gg : { &c0, &c1 })
+        {
+            gg->prepare(48000.0);
+            gg->setMode(Granular::Mode::Slice);
+            gg->setTrig(Granular::Trig::Chance);
+            gg->setLenNote(TempoInfo::Note::N16);
+            gg->setMix(1.f);
+            gg->setInterrupt(false);
+            gg->setInternalBpm(120.0);
+        }
+        c0.setChance(0.f);
+        c1.setChance(1.f);
+        c0.setMix(1.f);
+        c1.setMix(1.f);
+        std::vector<float> o0, o1;
+        renderGrab(c0, tt, 30000, o0, [](int) { return 0.5f; });
+        renderGrab(c1, tt, 30000, o1, [](int) { return 0.5f; });
+        double e0 = 0.0, e1 = 0.0;
+        for (int i = 20000; i < 30000; ++i) { e0 += std::abs(o0[(size_t) i]); e1 += std::abs(o1[(size_t) i]); }
+        CHECK(e0 < 0.01 * 10000, "chance 0 nunca agarra (%.1f)", e0);
+        CHECK(e1 > 0.1 * 10000, "chance 1 agarra sempre (%.1f)", e1);
+    }
+
     return failures;
 }
 
@@ -1666,6 +2212,138 @@ int mainVerb()
         double late = energy((int) out.size() - 48000, (int) out.size()); // fim do freeze
         CHECK(early > 0.0 && late / early > 0.15,
               "freeze sustenta (early %f late %f)", early, late);
+    }
+
+    // --- G45. Pre-delay atrasa a resposta (100 ms de silêncio inicial) ---
+    {
+        reverb::Reverb r;
+        setupVerb(r, reverb::Reverb::Algo::Hall, 1.0);
+        r.setPredelaySamples(4800); // 100 ms @48k
+        auto ir = renderIR(r, 2.0);
+        float early = 0.f, late = 0.f;
+        // A partir de 2000: o slew do predelay (anti-clique, 30 ms) deixa
+        // passar o transiente inicial; o estado estacionário é que conta.
+        for (int i = 2000; i < 4800; ++i) early = juce::jmax(early, std::abs(ir[(size_t) i]));
+        for (int i = 4800; i < 9600; ++i) late = juce::jmax(late, std::abs(ir[(size_t) i]));
+        CHECK(early < 1e-6f, "pre-delay cala antes dos 100 ms (%f)", early);
+        CHECK(late > 0.01f, "cauda arranca após o pre-delay (%f)", late);
+    }
+
+    // --- G46. Width 0 = mono (L igual a R, após o slew) ---
+    {
+        reverb::Reverb r;
+        setupVerb(r, reverb::Reverb::Algo::Hall, 1.0);
+        r.setWidth01(0.f);
+        juce::AudioBuffer<float> blk(2, 512);
+        bool same = true;
+        for (int b = 0; b < 100 && same; ++b)
+        {
+            blk.setSize(2, 512, false, false, true);
+            blk.clear();
+            if (b == 0) { blk.setSample(0, 0, 1.f); blk.setSample(1, 0, 1.f); }
+            r.process(blk);
+            if (b < 10) continue; // slew do width 1 -> 0
+            for (int i = 0; i < 512 && same; ++i)
+                if (std::abs(blk.getSample(0, i) - blk.getSample(1, i)) > 1e-5f) same = false;
+        }
+        CHECK(same, "width 0 cola L e R");
+    }
+
+    // --- G47. Size muda a densidade (linhas curtas = ecos densos) ---
+    // O feedback compensa o T60 (fica ~constante por desenho); o que muda
+    // é a densidade modal: sala pequena = mais picos cedo.
+    {
+        auto density = [](float size)
+        {
+            reverb::Reverb r;
+            setupVerb(r, reverb::Reverb::Algo::Hall, 2.0);
+            r.setSize01(size);
+            auto ir = renderIR(r, 6.0);
+            float peak = 0.f;
+            for (int i = 1000; i < 12000; ++i)
+                peak = juce::jmax(peak, std::abs(ir[(size_t) i]));
+            int n = 0;
+            for (int i = 1001; i < 11999; ++i)
+            {
+                float v = std::abs(ir[(size_t) i]);
+                if (v > peak * 0.1f && v >= std::abs(ir[(size_t) i - 1])
+                    && v >= std::abs(ir[(size_t) i + 1])) ++n;
+            }
+            return n;
+        };
+        int small = density(0.f), big = density(1.f);
+        CHECK(small > big * 3 / 2, "size 0 mais denso que size 1 (%d vs %d)", small, big);
+    }
+
+    // --- G48. Tone: locut tira graves, hicut tira agudos (Goertzel) ---
+    {
+        auto eboth = [&](float locut, float hicut, double& e100, double& e10k)
+        {
+            reverb::Reverb r;
+            setupVerb(r, reverb::Reverb::Algo::Hall, 1.0);
+            r.setTone(locut, hicut);
+            juce::AudioBuffer<float> blk(2, 512);
+            std::vector<float> out;
+            for (int b = 0; b < 100; ++b)
+            {
+                blk.setSize(2, 512, false, false, true);
+                blk.clear();
+                for (int i = 0; i < 512; ++i)
+                {
+                    float v = std::sin((b * 512 + i) * 2.f * 3.14159265f * 100.f / 48000.f) * 0.25f
+                            + std::sin((b * 512 + i) * 2.f * 3.14159265f * 10000.f / 48000.f) * 0.25f;
+                    blk.setSample(0, i, v);
+                    blk.setSample(1, i, v);
+                }
+                r.process(blk);
+                for (int i = 0; i < 512; ++i) out.push_back(blk.getSample(0, i));
+            }
+            auto goertzel = [&](double target)
+            {
+                double w = 2.0 * 3.14159265358979 * target / 48000.0;
+                double c = std::cos(w), p = 0.0, pp = 0.0;
+                int from = 25600, to = (int) out.size(), m = 0;
+                for (int i = from; i < to; ++i)
+                {
+                    double x = out[(size_t) i] + 2.0 * c * p - pp;
+                    pp = p;
+                    p = x;
+                    ++m;
+                }
+                return std::sqrt(p * p + pp * pp - 2.0 * c * p * pp) / m;
+            };
+            e100 = goertzel(100.0);
+            e10k = goertzel(10000.0);
+        };
+        double o100, o10k, l100, l10k, h100, h10k;
+        eboth(20.f, 20000.f, o100, o10k);
+        eboth(500.f, 20000.f, l100, l10k);
+        eboth(20.f, 2000.f, h100, h10k);
+        CHECK(l100 < o100 * 0.1, "locut 500 tira 100 Hz (%.2e vs %.2e)", l100, o100);
+        CHECK(h10k < o10k * 0.1, "hicut 2k tira 10 kHz (%.2e vs %.2e)", h10k, o10k);
+    }
+
+    // --- G49. Damp escurece a cauda (comparação de brilho) ---
+    {
+        auto bright = [&](float damp)
+        {
+            reverb::Reverb r;
+            setupVerb(r, reverb::Reverb::Algo::Hall, 2.0);
+            r.setDamp01(damp);
+            auto ir = renderIR(r, 6.0);
+            // Rácio de energia tardia HF vs total: aproxima-se por
+            // diferenças amostra-a-amostra (proxy de brilho).
+            double hf = 0.0, tot = 0.0;
+            for (int i = 48000; i < 144000; ++i)
+            {
+                float d = ir[(size_t) i] - ir[(size_t) i - 1];
+                hf += (double) d * d;
+                tot += (double) ir[(size_t) i] * ir[(size_t) i];
+            }
+            return hf / (tot + 1e-12);
+        };
+        double b0 = bright(0.f), b1 = bright(1.f);
+        CHECK(b1 < b0 * 0.5, "damp 1 escurece (brilho %.2e vs %.2e)", b1, b0);
     }
 
     return failures;

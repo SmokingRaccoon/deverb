@@ -805,6 +805,42 @@ static int mainCivil()
         CHECK(allOk, "20 RANDOMs civilizados todos audíveis e finitos");
     }
 
+    // --- C3. Duck no processador: dry forte cala o REV ---
+    // Isola o REV (gate FWD fechado mata dry+FWD; out = REV puro) para o
+    // duck não se esconder atrás do dry.
+    {
+        auto withDuck = [&](float duck)
+        {
+            DeVerbProcessor p;
+            p.prepareToPlay(sr, 512);
+            setF(p, "master", 1.f);
+            setF(p, "fwd_mix", 1.f);
+            setF(p, "fwd_gate_pattern", 0.f);
+            setF(p, "fwd_gate_depth", 1.f);
+            setF(p, "fwd_gate_mix", 1.f);
+            setF(p, "fwd_delay_mix", 0.f);
+            setF(p, "fwd_verb_mix", 0.f);
+            setI(p, "rev_mode", 1); // Loop
+            setF(p, "rev_mix", 1.f);
+            setF(p, "rev_duck", duck);
+            // Desliga o link do gate: senão o REV herdava o pattern 0x0000
+            // fechado do FWD e calava a própria cadeia (correto, mas não é
+            // o que se mede aqui).
+            setB(p, "link_gate", false);
+            setF(p, "rev_gate_mix", 0.f);
+            setF(p, "rev_delay_mix", 0.f);
+            setF(p, "rev_verb_mix", 0.f);
+            float rms = 0.f, peak = 0.f;
+            renderProc(p, 96000,
+                       [](int i) { return std::sin(i * 0.02f) * 0.9f; }, rms, peak);
+            (void) peak;
+            return rms;
+        };
+        float r0 = withDuck(0.f), r1 = withDuck(1.f);
+        CHECK(r0 > 0.1f, "REV audível sem duck (%.3f)", r0);
+        CHECK(r1 < r0 * 0.7f, "duck cala o REV (%.3f < %.3f)", r1, r0);
+    }
+
     return failures;
 }
 
