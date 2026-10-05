@@ -87,6 +87,13 @@ struct UiSessionDriver
         }
         pump(60);
     }
+    juce::String grText()
+    {
+        for (int c = 0; c < ed.getNumChildComponents(); ++c)
+            if (auto* v = dynamic_cast<V4Viz*>(ed.getChildComponent(c)))
+                if (v->getText().startsWith("GR ")) return v->getText();
+        return {};
+    }
     void flipStepFwd(int i) { ed.panels[0][0]->flipStep(i); pump(); }
     void flipStepRev(int i) { ed.panels[1][0]->flipStep(i); pump(); }
     V4Viz* granLedFwd() { return ed.panels[0][3]->findViz(V4Viz::GranLed); }
@@ -415,6 +422,33 @@ int main()
             k->keyPressed(juce::KeyPress(juce::KeyPress::returnKey)); // repõe
             CHECK(k->getState() == before, "enter repõe");
         }
+    }
+
+    // U11. GR mostra a redução do limiter (não fica preso em 0).
+    {
+        d.setParam("input_gain", 1.f); // 2.0, quente
+        d.setParam("fwd_verb_mix", 1.f); // cauda por cima: limita a sério
+        d.setParam("fwd_delay_mix", 0.5f);
+        juce::MidiBuffer midi;
+        juce::AudioBuffer<float> buf(2, 512);
+        for (int b = 0; b < 60; ++b)
+        {
+            for (int i = 0; i < 512; ++i)
+            {
+                float v = std::sin((b * 512 + i) * 0.05f) * 0.9f;
+                buf.setSample(0, i, v);
+                buf.setSample(1, i, v);
+            }
+            proc.processBlock(buf, midi);
+        }
+        d.pump(120);
+        juce::String gr = d.grText();
+        CHECK(gr.startsWith("GR ") && gr != "GR 0.0", "GR mostra redução (%s)",
+              gr.toRawUTF8());
+        d.setParam("input_gain", 0.025f); // ~0.05, calmo
+        d.runAudio(500); // ~5 s: o hold do GR esgota e volta a 0
+        juce::String gr2 = d.grText();
+        CHECK(gr2 == "GR 0.0", "GR volta a 0 (%s)", gr2.toRawUTF8());
     }
 
     if (failures == 0) std::printf("\nALL UI SESSION TESTS PASSED\n");
